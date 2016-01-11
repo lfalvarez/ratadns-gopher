@@ -23,3 +23,7 @@ _testmain.go
 *.exe
 *.test
 *.prof
+
+
+#Files that Intellij created
+ratadns-gopher.iml
