@@ -13,6 +13,7 @@ type Listener struct{
 	//Function to process the event data
 	processFunction func(eventData [] byte) []byte
 }
+
 func NewListener(processFunction func (eventData [] byte) []byte) *Listener {
 	listener := new(Listener)
 	listener.OutputChannel = make(chan []byte)
@@ -27,6 +28,9 @@ type EventManager struct{
 
 	//Input channel of events
 	InputChannel chan []byte
+
+	//Channel if a client connected
+	ClientConnected chan bool
 }
 
 //TODO
@@ -34,7 +38,7 @@ func NewEventManager() *EventManager {
 	eventManager := new(EventManager)
 	eventManager.listeners = make(map[*Listener]bool)
 	eventManager.InputChannel = make(chan []byte)
-
+	eventManager.ClientConnected = make(chan bool)
 	return eventManager
 }
 
@@ -72,10 +76,11 @@ func NewSSEServer(eventManager *EventManager, processFunction func(in []byte) []
 
 
 func (server *SSEServer) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+
+
 	// Make sure that the writer supports flushing.
 	//
 	flusher, ok := writer.(http.Flusher)
-
 	if !ok {
 		http.Error(writer, "Streaming unsupported!", http.StatusInternalServerError)
 		return
@@ -86,7 +91,7 @@ func (server *SSEServer) ServeHTTP(writer http.ResponseWriter, request *http.Req
 	writer.Header().Set("Connection", "keep-alive")
 	writer.Header().Set("Access-Control-Allow-Origin", "*")
 
-	listener := NewListener(server.processFunction);
+	listener := NewListener(server.processFunction)
 
 	server.eventManager.AddListener(listener)
 
@@ -100,10 +105,11 @@ func (server *SSEServer) ServeHTTP(writer http.ResponseWriter, request *http.Req
 	notify := writer.(http.CloseNotifier).CloseNotify()
 	go func() {
 		<-notify
+		server.eventManager.ClientConnected <- false
 		server.eventManager.RemoveListener(listener)
 		close(listener.OutputChannel)
 	}()
-
+	server.eventManager.ClientConnected <- true
 	for{
 		fmt.Fprintf(writer, "data: %s\n\n", <-listener.OutputChannel)
 
