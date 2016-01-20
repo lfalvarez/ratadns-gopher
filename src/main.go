@@ -12,7 +12,6 @@ func NewRedisClient() (client *redis.Client) {
 	client = redis.NewClient(&redis.Options{
 		Addr:     "172.17.66.212:6379", // TODO: Exportar a archivo de configuración
 	})
-
 	return
 }
 
@@ -27,29 +26,24 @@ func serversLocation(rw http.ResponseWriter, rq *http.Request) {
 	encoder.Encode(serversLocation)
 }
 
+func runSseServer(redisClient *redis.Client, serverFunction func(eventManager *sse.EventManager, client *redis.Client), url string){
+	eventManager := sse.NewEventManager()
+	go eventManager.Listen()
+	serverFunction(eventManager, redisClient)
+
+	sseServer := sse.NewSSEServer(eventManager, func(in []byte) []byte {
+		return in
+	})
+	http.Handle(url, sseServer)
+}
+
 func main() {
 	redisClient := NewRedisClient()
 
-	//servData
-	servDataManager := sse.NewEventManager()
-	go servDataManager.Listen()
-	servers.ServDataEvent(servDataManager, redisClient)
-
-	servDataServer := sse.NewSSEServer(servDataManager, func(in []byte) []byte {
-		return in
-	})
+	runSseServer(redisClient, servers.ServDataEvent, "/servData")
+	runSseServer(redisClient, servers.GeoEvent, "/geo")
 
 	//geo
-	geoManager := sse.NewEventManager()
-	go geoManager.Listen()
-	servers.GeoEvent(geoManager, redisClient)
-
-	geoServer := sse.NewSSEServer(geoManager, func(in []byte) []byte {
-		return in
-	})
-
 	http.HandleFunc("/serversLocation", serversLocation)
-	http.Handle("/servData", servDataServer)
-	http.Handle("/geo", geoServer)
 	http.ListenAndServe(":8080", nil)
 }
