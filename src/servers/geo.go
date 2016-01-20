@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"io/ioutil"
 	"encoding/json"
-	"fmt"
 )
 
 func GeoEvent(eventManager *sse.EventManager, client *redis.Client) {
@@ -45,9 +44,7 @@ func GeoEvent(eventManager *sse.EventManager, client *redis.Client) {
 				if err != nil {panic(err)}
 				lock.Lock()
 				if clientsNumber > 0 {
-					fmt.Println("Writing to geo event channel to", clientsNumber,"client(s)")
 					eventManager.InputChannel <- outputBytes
-					fmt.Println("Writed")
 				}
 				lock.Unlock()
 			} else {
