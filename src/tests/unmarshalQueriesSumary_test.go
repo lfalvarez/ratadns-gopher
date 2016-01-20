@@ -1,59 +1,38 @@
-package main
+package tests
 
 import (
 	"testing"
 	"fmt"
-	"./util"
+	"../servers"
 )
-
-type hexIpTestPair struct {
-	hexIp string
-	ip    string
-}
-
-var ipsTests = []hexIpTestPair{
-	{"8080808", "8.8.8.8"},
-	{"7F000001", "127.0.0.1"},
-	{"C8070681", "200.7.6.129"},
-	{"AC1E4135", "172.30.65.53"},
-}
-
-func TestHexToIp(t *testing.T) {
-	for _, pair := range ipsTests {
-		v := util.HexToIp(pair.hexIp)
-		if v != pair.ip {
-			t.Error("For", pair.hexIp, "expected", pair.ip, "got", v, )
-		}
-	}
-}
 
 type unmarshalTestPair struct {
 	bytes []byte
-	msg   Message
+	msg   servers.Message
 }
 
-var testMap1 = map[string][]string{
+var query1 = map[string][]string{
 	"f":{"jppdrm.cl."},
 }
 
-var testMap2 = map[string][]string{
+var query2 = map[string][]string{
 	"2b":{"hotelalbamar.cl."},
 }
 
-var testMap3 = map[string][]string{
+var query3 = map[string][]string{
 	"f":{"virutexilko.cl."},
 }
 
-var testMap4 = map[string][]string{
+var query4 = map[string][]string{
 	"1":{"collect.cl."},
 }
 
 
-var mySummary = &QueriesSummary{
-	{Queries:testMap1, Ip:"c84902b3"},
-	{Queries:testMap2, Ip:"bea00034"},
-	{Queries:testMap3, Ip:"c849061c"},
-	{Queries:testMap4, Ip:"c80c18bb"},
+var queriesSummary = &servers.QueriesSummary{
+	{Queries:query1, Ip:"c84902b3"},
+	{Queries:query2, Ip:"bea00034"},
+	{Queries:query3, Ip:"c849061c"},
+	{Queries:query4, Ip:"c80c18bb"},
 }
 var jsonQueriesSummary =
 `{
@@ -96,13 +75,12 @@ var jsonQueriesSummary =
   "timeStamp": 1452810394
 }`
 var unmarshalTest = []unmarshalTestPair{
-	{[]byte(jsonQueriesSummary), Message{ServerId:"blanco", Type:"QueriesSummary", TimeStamp:1452810394, Payload:mySummary}},
+	{[]byte(jsonQueriesSummary), servers.Message{ServerId:"blanco", Type:"QueriesSummary", TimeStamp:1452810394, Payload:queriesSummary}},
 }
 
 func TestUnmarshalJSON(t *testing.T) {
 	for _, pair := range unmarshalTest {
-		var msg Message
-
+		var msg servers.Message
 		err := msg.UnmarshalJSON(pair.bytes)
 		if err != nil {t.Error("An error ocurred while unmarshaling", err)}
 
@@ -115,13 +93,12 @@ func TestUnmarshalJSON(t *testing.T) {
 		if msg.TimeStamp != pair.msg.TimeStamp {
 			t.Error("The timestamps of the messages aren't equal", msg.TimeStamp, pair.msg.TimeStamp)
 		}
-		for i := range *msg.Payload.(*QueriesSummary){
-			if fmt.Sprint((*msg.Payload.(*QueriesSummary))[i]) != fmt.Sprint((*pair.msg.Payload.(*QueriesSummary))[i]) {
+		for i := range *msg.Payload.(*servers.QueriesSummary){
+			if fmt.Sprint((*msg.Payload.(*servers.QueriesSummary))[i]) != fmt.Sprint((*pair.msg.Payload.(*servers.QueriesSummary))[i]) {
 				t.Error("The Payload of the messages aren't equal",
-					msg.Payload.(*QueriesSummary),
-					pair.msg.Payload.(*QueriesSummary))
+					msg.Payload.(*servers.QueriesSummary),
+					pair.msg.Payload.(*servers.QueriesSummary))
 			}
 		}
 	}
-
 }
