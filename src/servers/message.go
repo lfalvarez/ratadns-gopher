@@ -23,11 +23,16 @@ func (m *Message) UnmarshalJSON(bs []byte) (err error) {
 		err = json.Unmarshal(bs, &struct{ Summary *QueriesSummary `json:"data"` }{Summary : qs })
 		if err != nil { return }
 		m.Payload = qs
-	case "QueryWithUndercoredName":
+	case "QueryWithUnderscoredName":
 		qwun := &QueriesWithUnderscoredName{}
 		err = json.Unmarshal(bs, &struct{ Queries *QueriesWithUnderscoredName `json:"data"` }{Queries : qwun })
 		if err != nil { return }
 		m.Payload = qwun
+	case "QueryNameCounter":
+		qnm := &QueryNameCounter{}
+		err = json.Unmarshal(bs, &struct{ Queries *QueryNameCounter `json:"data"`}{Queries : qnm})
+		if err != nil { return }
+		m.Payload = qnm
 	}
 	return
 }
@@ -44,8 +49,26 @@ func (m *Message) MarshalJSON() (bs []byte, err error) {
 			Alias: (*Alias)(m),
 			Summary: qs,
 		})
+	case "QueryNameCounter":
+		qnc := m.Payload.(*QueryNameCounter)
+		return json.Marshal(&struct {
+			*Alias
+			Summary *QueryNameCounter `json:"data"`
+		}{
+			Alias: (*Alias)(m),
+			Summary: qnc,
+		})
+	case "nameCountTopK:"+m.ServerId+":60", "nameCountTopK:"+m.ServerId+":300", "nameCountTopK:"+m.ServerId+":900","malformedTopK:"+m.ServerId+":60", "malformedTopK:"+m.ServerId+":300", "malformedTopK:"+m.ServerId+":900":
+		qs := m.Payload.([][]string)
+		return json.Marshal(&struct {
+			*Alias
+			Summary [][]string `json:"data"`
+		}{
+			Alias: (*Alias)(m),
+			Summary: qs,
+		})
 	default:
-		return nil, errors.New("Message type not supported")
+		return nil, errors.New("Message type not supported " + m.Type)
 	}
 }
 
@@ -62,10 +85,33 @@ type Location struct {
 }
 
 type QueryWithUnderscoredName struct {
-	Sender string
-	Server string
-	Query  string
-	Qtype  int32
+	Sender string `json:"sender"`
+	Server string `json:"server"`
+	Query  string `json:"query"`
+	QType  int32  `json:"qtype"`
 }
 
 type QueriesWithUnderscoredName map[string][]*QueryWithUnderscoredName
+
+type QueryNameCounter map[string]int
+
+type QueryCounter struct{
+	Query string
+	Counter int
+}
+
+func (qc QueryCounter) MarshalBinary() (bs []byte, err error){
+	type Alias QueryCounter
+	return json.Marshal(&struct{Alias}{Alias: (Alias)(qc)})
+}
+
+type QueriesCounter []QueryCounter
+
+func (qc QueriesCounter) MarshalBinary() (bs []byte, err error){
+	type Alias QueriesCounter
+	return json.Marshal(&struct{Alias}{Alias: (Alias)(qc)})
+}
+
+func (qc QueriesCounter) Len() int           { return len(qc) }
+func (qc QueriesCounter) Swap(i, j int)      { qc[i], qc[j] = qc[j], qc[i] }
+func (qc QueriesCounter) Less(i, j int) bool { return qc[i].Counter < qc[j].Counter }
