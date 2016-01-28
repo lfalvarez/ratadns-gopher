@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"io/ioutil"
 	"encoding/json"
+	"fmt"
 )
 
 func GeoEvent(eventManager *sse.EventManager, client *redis.Client) {
@@ -19,7 +20,8 @@ func GeoEvent(eventManager *sse.EventManager, client *redis.Client) {
 		for {
 			jsonMsg, err := summary.ReceiveMessage()
 			if err != nil {
-				panic(err)
+				fmt.Println(err) //TODO: logger
+				continue
 			}
 			var msg Message
 			err = msg.UnmarshalJSON([]byte(jsonMsg.Payload))
