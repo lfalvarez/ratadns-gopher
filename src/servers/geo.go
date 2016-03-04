@@ -1,4 +1,5 @@
 package servers
+
 import (
 	"gopkg.in/redis.v3"
 	"../sse"
@@ -10,7 +11,7 @@ import (
 )
 
 func GeoEvent(eventManager *sse.EventManager, client *redis.Client) {
-	/*malformed, err := client.Subscribe("QueriesWithUnderscoredName")
+	/*malformed, err := client.Subscribe("QueriesWithUnderscoredName")//TODO
 	if err != nil {
 		panic(err)
 	}*/
@@ -29,19 +30,19 @@ func GeoEvent(eventManager *sse.EventManager, client *redis.Client) {
 			for _, summaryEntry := range *msg.Payload.(*QueriesSummary) {
 				ip := util.HexToIp(summaryEntry.Ip)
 				summaryEntry.Ip = ip
-				res, err := http.Get("http://172.17.66.212:8080/json/" + ip)
-				if err != nil {panic(err)}
+				res, err := http.Get("http://172.17.66.212:8080/json/" + ip) // TODO: Exportar a archivo de configuración
+				if err != nil {panic(err)} //TODO: logger
 				body, err := ioutil.ReadAll(res.Body)
 				var geoData Location
 				json.Unmarshal(body, &geoData)
 				summaryEntry.Location = geoData
 			}
 			outputBytes, err := msg.MarshalJSON()
-			if err != nil {panic(err)}
+			if err != nil {panic(err)} //TODO: logger
 			eventManager.InputChannel <- outputBytes
 		}
 	}()
-	/*
+	/*//TODO
 	go func() {
 		for {
 			if clientsNumber >0 {

@@ -121,6 +121,7 @@ type QueryNameCounter map[string]int
 
 //QueryCounter struct that has a query and the times that query was called.
 //It differs with QueryNameCounter at that this struct is used to create an ordered list in QueriesCounter.
+//TODO: maybe it's a good idea to use QueryNameCounter to reuse code
 type QueryCounter struct{
 	Query string
 	Counter int
@@ -133,15 +134,17 @@ func (qc QueryCounter) MarshalBinary() (bs []byte, err error){
 }
 
 //QueiresCounter struct is a slice of QueryCounter.
+//It's used to create a sorted object of QueryCounter.
 type QueriesCounter []QueryCounter
 
-//MarshalBinary function to implement interface BinaryMarshaler
+//MarshalBinary function to implement interface BinaryMarshaler. The interface is needed to send
+//QueriesCounter objects in a redis channel.
 func (qc QueriesCounter) MarshalBinary() (bs []byte, err error){
 	type Alias QueriesCounter
 	return json.Marshal(&struct{Alias}{Alias: (Alias)(qc)})
 }
 
-//Len, Swap and Less are functions to order a slice of QueriesCounter
+//Len, Swap and Less are functions to sort a slice of QueriesCounter.
 func (qc QueriesCounter) Len() int           { return len(qc) }
 func (qc QueriesCounter) Swap(i, j int)      { qc[i], qc[j] = qc[j], qc[i] }
 func (qc QueriesCounter) Less(i, j int) bool { return qc[i].Counter < qc[j].Counter }
