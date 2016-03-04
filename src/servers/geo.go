@@ -10,6 +10,8 @@ import (
 	"fmt"
 )
 
+//GeoEvent receives a message of the redis channel QueriesSummary, adds the location of the message on it and sends it
+//to a HTML5 SSE.
 func GeoEvent(eventManager *sse.EventManager, client *redis.Client) {
 	/*malformed, err := client.Subscribe("QueriesWithUnderscoredName")//TODO
 	if err != nil {
@@ -42,7 +44,7 @@ func GeoEvent(eventManager *sse.EventManager, client *redis.Client) {
 			eventManager.InputChannel <- outputBytes
 		}
 	}()
-	/*//TODO
+	/*//TODO: check if this will be used.
 	go func() {
 		for {
 			if clientsNumber >0 {
