@@ -5,6 +5,8 @@ import (
 	"gopkg.in/redis.v3"
 )
 
+//ServDataEvent reads messages from redis channels QueriesPerSecond and AnswersPerSecond and writes them to
+//a HTML5 SSE.
 func ServDataEvent(eventManager *sse.EventManager, client *redis.Client) {
 	qps, err := client.Subscribe("QueriesPerSecond")
 	if err != nil {panic(err)}
