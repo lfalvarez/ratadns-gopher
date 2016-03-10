@@ -41,7 +41,7 @@ func runSseServer(redisClient *redis.Client, serverFunction func(eventManager *s
 
 func main() {
 	l := &lumberjack.Logger{//TODO: move this configurations to a config file
-		Filename:   "/home/benjamin/log/asd.log",
+		Filename:   "/var/log/gopher/log.log",
 		MaxSize:    500, // megabytes
 		MaxBackups: 3,
 		MaxAge:     28, //days
