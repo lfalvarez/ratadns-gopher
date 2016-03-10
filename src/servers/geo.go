@@ -8,11 +8,12 @@ import (
 	"io/ioutil"
 	"encoding/json"
 	"fmt"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 //GeoEvent receives a message of the redis channel QueriesSummary, adds the location of the message on it and sends it
 //to a HTML5 SSE.
-func GeoEvent(eventManager *sse.EventManager, client *redis.Client) {
+func GeoEvent(eventManager *sse.EventManager, client *redis.Client, l *lumberjack.Logger) {
 	/*malformed, err := client.Subscribe("QueriesWithUnderscoredName")//TODO
 	if err != nil {
 		panic(err)

@@ -3,11 +3,12 @@ package servers
 import (
 	"../sse"
 	"gopkg.in/redis.v3"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 //ServDataEvent reads messages from redis channels QueriesPerSecond and AnswersPerSecond and writes them to
 //a HTML5 SSE.
-func ServDataEvent(eventManager *sse.EventManager, client *redis.Client) {
+func ServDataEvent(eventManager *sse.EventManager, client *redis.Client, l *lumberjack.Logger) {
 	qps, err := client.Subscribe("QueriesPerSecond")
 	if err != nil {panic(err)}
 	aps, err := client.Subscribe("AnswersPerSecond")
