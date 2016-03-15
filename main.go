@@ -3,8 +3,8 @@ package main
 import (
 	"net/http"
 	"gopkg.in/redis.v3"
-	"./sse"
-	"./servers"
+	"ratadns-gopher/sse"
+	"ratadns-gopher/servers"
 	"encoding/json"
 	"gopkg.in/natefinch/lumberjack.v2"
 	"log"

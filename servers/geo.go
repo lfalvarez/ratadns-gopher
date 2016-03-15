@@ -2,8 +2,8 @@ package servers
 
 import (
 	"gopkg.in/redis.v3"
-	"../sse"
-	"../util"
+	"ratadns-gopher/sse"
+	"ratadns-gopher/util"
 	"net/http"
 	"io/ioutil"
 	"encoding/json"

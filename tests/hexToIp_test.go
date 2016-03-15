@@ -1,7 +1,7 @@
 package tests
 import (
 	"testing"
-	"../util"
+	"ratadns-gopher/util"
 )
 
 type hexIpTestPair struct {

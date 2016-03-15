@@ -3,7 +3,7 @@ package tests
 import (
 	"testing"
 	"fmt"
-	"../servers"
+	"ratadns-gopher/servers"
 )
 
 type unmarshalTestPair struct {

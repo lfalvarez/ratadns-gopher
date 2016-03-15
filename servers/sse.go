@@ -1,7 +1,7 @@
 package servers
 
 import (
-	"../sse"
+	"ratadns-gopher/sse"
 	"gopkg.in/redis.v3"
 	"sort"
 	"time"
