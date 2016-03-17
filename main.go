@@ -19,14 +19,23 @@ func NewRedisClient(address string) (client *redis.Client) {
 }
 
 func serversLocation(rw http.ResponseWriter, rq *http.Request) {
-	serversLocation := make(map[string]servers.Location)
+	serversLocation := make(map[string]util.Location)
 
-	serversLocation["beaucheff"] = servers.Location{Longitude: -70.663777, Latitude: -33.463254, CountryName: "Chile" }
-	serversLocation["blanco"] = servers.Location{Longitude: -70.663777, Latitude: -33.463254, CountryName: "Chile" }
+	serversLocation["beaucheff"] = util.Location{Longitude: -70.663777, Latitude: -33.463254, CountryName: "Chile" }
+	serversLocation["blanco"] = util.Location{Longitude: -70.663777, Latitude: -33.463254, CountryName: "Chile" }
 
 	encoder := json.NewEncoder(rw)
 	encoder.Encode(serversLocation)
 }
+
+func encodeServers(c util.Configuration){
+	serversLocation := make(map[string]util.Location)
+
+	for _, value := range c.Servers {
+		serversLocation[value.Name] = value.Data
+	}
+}
+
 
 func runSseServer(redisClient *redis.Client, serverFunction func(eventManager *sse.EventManager, client *redis.Client, l *lumberjack.Logger, c util.Configuration), url string, l *lumberjack.Logger, config util.Configuration) {
 	eventManager := sse.NewEventManager()
@@ -50,6 +59,8 @@ func main() {
 
 	log.SetOutput(l)
 	redisClient := NewRedisClient(config.Redis.Address)
+
+	encodeServers(config)
 
 	runSseServer(redisClient, servers.ServDataEvent, "/servData", l, config)
 	runSseServer(redisClient, servers.GeoEvent, "/geo", l, config)

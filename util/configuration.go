@@ -24,14 +24,9 @@ type Configuration struct {
 	    }
 	Servers []struct{
 		Name string
-		Data struct{
-			Longitude float64
-			Latitude float64
-			CountryName string
-		     }
+		Data Location
 	}
 }
-
 
 func InitConfig() Configuration {
 	file, _ := os.Open("config.json")

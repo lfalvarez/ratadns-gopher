@@ -5,6 +5,7 @@ package servers
 import (
 	"errors"
 	"encoding/json"
+	"ratadns-gopher/util"
 )
 
 //Message struct is used to unmarshal the redis messages into an object.
@@ -90,16 +91,9 @@ func (m *Message) MarshalJSON() (bs []byte, err error) {
 type QueriesSummary []*struct {
 	Ip       string `json:"ip"`
 	Queries  map[string][]string `json:"queries"`
-	Location Location `json:"location"`
+	Location util.Location `json:"location"`
 }
 
-//Location struct to marshal the location of QueriesSummary.
-//The struct has a longitude, a latitude and the name of the country of that location.
-type Location struct {
-	Longitude   float64 `json:"longitude"`
-	Latitude    float64 `json:"latitude"`
-	CountryName string `json:"country_name"`
-}
 
 //QueryWithUnderscoredName is an element of QueriesWithUnderscoredName.
 //The struct has the IP of the sender in hexadecimal, the IP of the receiver in hexadecimal, the malformed query and

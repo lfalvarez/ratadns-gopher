@@ -36,7 +36,7 @@ func GeoEvent(eventManager *sse.EventManager, client *redis.Client, l *lumberjac
 				res, err := http.Get(c.Geo.Address + ip)
 				if err != nil {panic(err)} //TODO: logger
 				body, err := ioutil.ReadAll(res.Body)
-				var geoData Location
+				var geoData util.Location
 				json.Unmarshal(body, &geoData)
 				summaryEntry.Location = geoData
 			}
