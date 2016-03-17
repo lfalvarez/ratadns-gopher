@@ -9,24 +9,26 @@ import (
 	"encoding/json"
 	"reflect"
 	"gopkg.in/natefinch/lumberjack.v2"
+	"ratadns-gopher/util"
 )
 
 //TopKEvent function subscribe to "topk" and "QueriesWithUnderscoredName" channels, obtains configuration information,
 //and launches functions to obtain the message of the redis channels, spread that message, process it and write the
 //processed message in a HTML5 SSE.
-func TopKEvent(eventManager *sse.EventManager, client *redis.Client, l *lumberjack.Logger) {
+func TopKEvent(eventManager *sse.EventManager, client *redis.Client, l *lumberjack.Logger, c util.Configuration) {
 	topk, err := client.Subscribe("topk")
 	if err != nil {
 		l.Write([]byte("["+time.Now().String()+"]"+err.Error()+"\n"))
 	}
 	redisWriter := redis.NewClient(&redis.Options{
-		Addr:     "172.17.66.212:6379", // TODO: Exportar a archivo de configuración
+		Addr:    c.Redis.Address,
 	})
 	malformed, err := client.Subscribe("QueriesWithUnderscoredName")
 	if err != nil {
 		l.Write([]byte("["+time.Now().String()+"]"+err.Error()+"\n"))
 	}
-	times := []string{"60", "300", "900"}  // TODO: Exportar a archivo de configuración
+
+	times := c.TopK.Times
 
 	script := "local old_jsons = redis.call('zrangebyscore', KEYS[1], '-inf' , ARGV[1]);" +
 	"redis.call('zremrangebyscore', KEYS[1], '-inf', ARGV[1]);" +

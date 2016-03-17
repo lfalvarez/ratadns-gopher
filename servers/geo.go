@@ -13,7 +13,7 @@ import (
 
 //GeoEvent receives a message of the redis channel QueriesSummary, adds the location of the message on it and sends it
 //to a HTML5 SSE.
-func GeoEvent(eventManager *sse.EventManager, client *redis.Client, l *lumberjack.Logger) {
+func GeoEvent(eventManager *sse.EventManager, client *redis.Client, l *lumberjack.Logger, c util.Configuration) {
 	/*malformed, err := client.Subscribe("QueriesWithUnderscoredName")//TODO
 	if err != nil {
 		panic(err)
@@ -33,7 +33,7 @@ func GeoEvent(eventManager *sse.EventManager, client *redis.Client, l *lumberjac
 			for _, summaryEntry := range *msg.Payload.(*QueriesSummary) {
 				ip := util.HexToIp(summaryEntry.Ip)
 				summaryEntry.Ip = ip
-				res, err := http.Get("http://172.17.66.212:8080/json/" + ip) // TODO: Exportar a archivo de configuración
+				res, err := http.Get(c.Geo.Address + ip)
 				if err != nil {panic(err)} //TODO: logger
 				body, err := ioutil.ReadAll(res.Body)
 				var geoData Location
