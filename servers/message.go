@@ -109,6 +109,7 @@ type QueryWithUnderscoredName struct {
 //The struct is a map of the malformed query to a slice of QueryWithUnderscoredName.
 type QueriesWithUnderscoredName map[string][]*QueryWithUnderscoredName
 
+
 //QueryNameCounter struct to marshal/unmarshal redis messages of type QueryNameCounter.
 //The struct is a map of the url to the times it was called.
 type QueryNameCounter map[string]int

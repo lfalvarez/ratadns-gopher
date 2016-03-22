@@ -23,14 +23,14 @@
      "data": {
         "longitude": -70.663777,
         "latitude": -33.463254,
-        "countryName": "Chile"
+        "country_name": "Chile"
       }
     },
     {"name": "blanco",
      "data": {
         "longitude": -70.663777,
         "latitude": -33.463254,
-        "countryName": "Chile"
+        "country_name": "Chile"
      }
     }
   ]

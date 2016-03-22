@@ -2,7 +2,6 @@ package servers
 
 import (
 	"gopkg.in/redis.v3"
-	"ratadns-gopher/sse"
 	"ratadns-gopher/util"
 	"net/http"
 	"io/ioutil"
@@ -13,7 +12,7 @@ import (
 
 //GeoEvent receives a message of the redis channel QueriesSummary, adds the location of the message on it and sends it
 //to a HTML5 SSE.
-func GeoEvent(eventManager *sse.EventManager, client *redis.Client, l *lumberjack.Logger, c util.Configuration) {
+func GeoEvent(channel chan []byte, client *redis.Client, l *lumberjack.Logger, c util.Configuration) {
 	/*malformed, err := client.Subscribe("QueriesWithUnderscoredName")//TODO
 	if err != nil {
 		panic(err)
@@ -42,7 +41,7 @@ func GeoEvent(eventManager *sse.EventManager, client *redis.Client, l *lumberjac
 			}
 			outputBytes, err := msg.MarshalJSON()
 			if err != nil {panic(err)} //TODO: logger
-			eventManager.InputChannel <- outputBytes
+			channel <- outputBytes
 		}
 	}()
 	/*//TODO: check if this will be used.

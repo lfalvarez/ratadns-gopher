@@ -5,5 +5,5 @@ package util
 type Location struct {
 	Longitude   float64 `json:"longitude"`
 	Latitude    float64 `json:"latitude"`
-	CountryName string `json:"countryName"`
+	CountryName string `json:"country_name"`
 }

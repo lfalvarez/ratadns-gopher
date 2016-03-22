@@ -36,15 +36,11 @@ func encodeServers(c util.Configuration){
 	}
 }
 
+func runSseServer(redisClient *redis.Client, serverFunction func(channel chan []byte, client *redis.Client, l *lumberjack.Logger, c util.Configuration), url string, l *lumberjack.Logger, config util.Configuration) {
+	channel := make(chan []byte)
+	serverFunction(channel, redisClient, l, config)
 
-func runSseServer(redisClient *redis.Client, serverFunction func(eventManager *sse.EventManager, client *redis.Client, l *lumberjack.Logger, c util.Configuration), url string, l *lumberjack.Logger, config util.Configuration) {
-	eventManager := sse.NewEventManager()
-	go eventManager.Listen()
-	serverFunction(eventManager, redisClient, l, config)
-
-	sseServer := sse.NewSSEServer(eventManager, func(in []byte) []byte {
-		return in
-	})
+	sseServer := sse.NewSSEServer(channel)
 	http.Handle(url, sseServer)
 }
 

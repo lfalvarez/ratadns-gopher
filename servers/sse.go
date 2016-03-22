@@ -1,7 +1,6 @@
 package servers
 
 import (
-	"ratadns-gopher/sse"
 	"gopkg.in/redis.v3"
 	"sort"
 	"time"
@@ -13,9 +12,9 @@ import (
 )
 
 //TopKEvent function subscribe to "topk" and "QueriesWithUnderscoredName" channels, obtains configuration information,
-//and launches functions to obtain the message of the redis channels, spread that message, process it and write the
+//and launches funEventManagerctions to obtain the message of the redis channels, spread that message, process it and write the
 //processed message in a HTML5 SSE.
-func TopKEvent(eventManager *sse.EventManager, client *redis.Client, l *lumberjack.Logger, c util.Configuration) {
+func TopKEvent(channel chan[]byte, client *redis.Client, l *lumberjack.Logger, c util.Configuration) {
 	topk, err := client.Subscribe("topk")
 	if err != nil {
 		l.Write([]byte("["+time.Now().String()+"]"+err.Error()+"\n"))
@@ -46,14 +45,12 @@ func TopKEvent(eventManager *sse.EventManager, client *redis.Client, l *lumberja
 	//for every different time span, launch the function that process the information in that time span.
 	for i, seconds := range times {
 		nameCountChannels[i] = make(chan QueryCounterMsg)
-		go obtainTopK(seconds, script, "nameCount", nameCountChannels[i], redisWriter, eventManager, l)
+		go obtainTopK(seconds, script, "nameCount", nameCountChannels[i], redisWriter, channel, l)
 		malformedChannels[i] = make(chan QueryCounterMsg)
-		go obtainTopK(seconds, script, "malformed", malformedChannels[i], redisWriter, eventManager, l)
+		go obtainTopK(seconds, script, "malformed", malformedChannels[i], redisWriter, channel, l)
 	}
 }
 
-//orderMalformed receives messages of the channel "QueriesWithUnderscoredNames", unmarshall the message,
-//order it in a decreasing way and then send the object to a channel so it is spread later.
 func orderMalformed(malformed *redis.PubSub, channel chan QueryCounterMsg) (err error){
 	for {
 		jsonMsg, err := malformed.ReceiveMessage()
@@ -100,6 +97,46 @@ func orderTopK(topk *redis.PubSub, channel chan QueryCounterMsg) (err error){
 	}
 }
 
+////orderMalformed receives messages of the channel "QueriesWithUnderscoredNames", unmarshall the message,
+////order it in a decreasing way and then send the object to a channel so it is spread later.
+//func orderMalformed(malformed *redis.PubSub, channel chan QueryCounterMsg) (err error){
+//	var msg Message
+//	err = order(malformed,channel,*msg.Payload.(*QueriesWithUnderscoredName),msg)
+//
+//	return err
+//}
+//
+////orderTopKd receives messages of the channel "topk", unmarshall the message,
+////order it in a decreasing way and then send the object to a channel so it is spread later.
+//func orderTopK(topk *redis.PubSub, channel chan QueryCounterMsg) (err error){
+//	var msg Message
+//	err = order(topk,channel,*msg.Payload.(*QueryNameCounter),msg)
+//
+//	return err
+//}
+//
+//func order(pub *redis.PubSub, channel chan QueryCounterMsg, payloadType QueryMap, msg Message) (err error){
+//	for {
+//		jsonMsg, err := pub.ReceiveMessage()
+//		if err != nil {
+//			return err
+//		}
+//
+//		err = msg.UnmarshalJSON([]byte(jsonMsg.Payload))
+//		if err != nil {
+//			return err
+//		}
+//		orderedValues := make(QueriesCounter, len(payloadType))
+//		counter := 0
+//		for value, i := range payloadType {
+//			orderedValues[counter] = QueryCounter{value, i}
+//			counter++
+//		}
+//		sort.Sort(sort.Reverse(orderedValues))
+//		channel <- QueryCounterMsg{orderedValues, msg.ServerId}
+//	}
+//}
+
 //spreadMessage get a message of a channel of QueryCounterMsg and spread it to a slice of channels of QueryCounterMsg .
 func spreadMessage(channel chan QueryCounterMsg, channels []chan QueryCounterMsg) {
 	for {
@@ -120,7 +157,7 @@ type QueryCounterMsg struct {
 //increase the times a url was called, then retrieves the values that are out of the span of time, decrease the times
 //those url was called and writes to and sse channel the top k valuesof the redis channel.
 //TODO: make that the functioon writes the top K, not only the top 5.
-func obtainTopK(seconds string, script string, name string, channel chan QueryCounterMsg, redisWriter *redis.Client, eventManager *sse.EventManager, l *lumberjack.Logger) {
+func obtainTopK(seconds string, script string, name string, channel chan QueryCounterMsg, redisWriter *redis.Client, outputChannel chan []byte, l *lumberjack.Logger) {
 	for {
 		qcm := <-channel
 		orderedValues := qcm.qc
@@ -186,8 +223,8 @@ func obtainTopK(seconds string, script string, name string, channel chan QueryCo
 			continue
 		}
 		execMulti(multi, l)
-		eventManager.InputChannel <- []byte(getOutputMessage(serverTopK.Val(), serverId, name, seconds, l))
-		eventManager.InputChannel <- []byte(getOutputMessage(globalTopK.Val(), "GLOBAL", name, seconds, l))
+		outputChannel <- []byte(getOutputMessage(serverTopK.Val(), serverId, name, seconds, l))
+		outputChannel <- []byte(getOutputMessage(globalTopK.Val(), "GLOBAL", name, seconds, l))
 		multi.Close()
 	}
 }
