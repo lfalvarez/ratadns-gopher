@@ -12,7 +12,7 @@ serverData.start()
 queriesSummary = QueriesSummaryEventProcessor(r)
 queriesSummary.start()
 
-def create_stream(event_processor: EventProcessor):
+def create_sse_response(event_processor: EventProcessor) -> Response:
     def stream():
         ec = EventConsumer()
         event_processor.register_consumer(ec)
@@ -24,16 +24,20 @@ def create_stream(event_processor: EventProcessor):
         except GeneratorExit:
             event_processor.unregister_consumer(ec)
 
-    return stream
+    return Response(stream(),
+                    mimetype='text/event-stream',
+                    headers={
+                        'Access-Control-Allow-Origin': '*'
+                    })
 
 
 @app.route("/servData")
 def serv_data():
-    return Response(create_stream(serverData)(), mimetype='text/event-stream')
+    return create_sse_response(serverData)
 
 @app.route("/geo")
 def geo():
-    return Response(create_stream(queriesSummary)(), mimetype='text/event-stream')
+    return create_sse_response(queriesSummary)
 
 if __name__ == "__main__":
-    app.run()
+    app.run(port=8080)
