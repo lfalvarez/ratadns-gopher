@@ -1,0 +1,23 @@
+{
+  "redis": {
+    "address": "172.17.66.212",
+    "port": 6379
+  },
+
+  "servers": [
+    {"name": "beaucheff",
+     "data": {
+        "longitude": -70.663777,
+        "latitude": -33.463254,
+        "country_name": "Chile"
+      }
+    },
+    {"name": "blanco",
+     "data": {
+        "longitude": -70.663777,
+        "latitude": -33.463254,
+        "country_name": "Chile"
+     }
+    }
+  ]
+}

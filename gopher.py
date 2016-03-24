@@ -4,8 +4,9 @@ from gopher import EventConsumer, ServerDataEventProcessor, EventProcessor, Quer
 from flask import Flask, Response
 
 app = Flask(__name__)
-#r = redis.StrictRedis(host='localhost', port=6379, db=0)
-r = redis.StrictRedis(host='172.17.66.212', port=6379, db=0)
+
+config = json.load(open("config.json")) # TODO: Think how to pass configuration file
+r = redis.StrictRedis(host=config['redis']['address'], port=config['redis']['port'], db=0)
 
 event_processors = {
     'server_data': ServerDataEventProcessor(r),
@@ -48,6 +49,10 @@ def serv_data():
 @app.route("/geo")
 def geo():
     return create_sse_response(event_processors['queries_summary'])
+
+@app.route("/servers_location")
+def servers_location():
+    return json.dumps(config['servers']) + "\n\n"
 
 if __name__ == "__main__":
     app.run(port=8080)
