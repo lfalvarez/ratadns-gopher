@@ -3,21 +3,26 @@
     "address": "localhost",
     "port": 6379
   },
-
+  "freegeoip": {
+    "address": "localhost",
+    "port": 8081
+  },
   "servers": [
-    {"name": "beaucheff",
-     "data": {
+    {
+      "name": "beaucheff",
+      "data": {
         "longitude": -70.663777,
         "latitude": -33.463254,
         "country_name": "Chile"
       }
     },
-    {"name": "blanco",
-     "data": {
+    {
+      "name": "blanco",
+      "data": {
         "longitude": -70.663777,
         "latitude": -33.463254,
         "country_name": "Chile"
-     }
+      }
     }
   ]
 }

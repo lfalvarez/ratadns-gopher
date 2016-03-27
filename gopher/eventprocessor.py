@@ -1,3 +1,6 @@
+import queue
+from typing import Mapping, Tuple
+
 import redis
 import threading
 import json
@@ -5,6 +8,7 @@ import json
 import socket
 import struct
 import urllib.request
+
 
 class EventProcessor(threading.Thread):
     """One event processor for each URL"""
@@ -14,23 +18,24 @@ class EventProcessor(threading.Thread):
         self.pubsub = r.pubsub(ignore_subscribe_messages=True)
         self.consumers = []
 
-    def register_consumer(self, event_consumer):
+    def register_consumer(self, event_consumer: EventConsumer):
         self.consumers.append(event_consumer)
 
-    def unregister_consumer(self, event_consumer):
+    def unregister_consumer(self, event_consumer: EventConsumer):
         self.consumers.remove(event_consumer)
 
-    def subscribe(self, channel):
+    def subscribe(self, channel: str):
         self.pubsub.subscribe(channel)
 
     def run(self):
         for serialized_item in self.pubsub.listen():
             item = json.loads(str(serialized_item['data'], "utf-8"))
-            processed_item = self.process(item)
-            for consumer in self.consumers:
-                consumer.consume(processed_item)
+            (do_consume, processed_item) = self.process(item)
+            if do_consume:  # processed items must be published
+                for consumer in self.consumers:
+                    consumer.consume(processed_item)
 
-    def process(self, item):
+    def process(self, item: Mapping[str, any]) -> Tuple[bool, any]:
         pass
 
 
@@ -41,55 +46,46 @@ class ServerDataEventProcessor(EventProcessor):
         self.subscribe("AnswersPerSecond")
 
     def process(self, item):
-        return item
+        return (True, item)
+
 
 def hex_to_ip(ip_hex: str):
     if len(ip_hex) == 8 or len(ip_hex) == 7:
         ip = int(ip_hex, 16)
         return socket.inet_ntoa(struct.pack(">L", ip))
-    else: # IPV6 Not supported! (yet)
-        return None # Refactor this!
+    else:  # IPV6 Not supported! (yet)
+        return None  # Refactor this!
 
 
 class QueriesSummaryEventProcessor(EventProcessor):
-    def __init__(self, r: redis.StrictRedis):
+    def __init__(self, r: redis.StrictRedis, config: Mapping[str, any]):
         super().__init__(r)
         self.subscribe("QueriesSummary")
+        self.config = config
 
-    def process(self, item):
-        for summaryEntry in item['data']:
-            ip = hex_to_ip(summaryEntry['ip'])
+    def process(self, item: Mapping[str, any]) -> Tuple[bool, any]:
+        for summary_entry in item['data']:
+            ip = hex_to_ip(summary_entry['ip'])
 
             if ip == None:
                 continue
 
-            summaryEntry['ip'] = ip
-            with urllib.request.urlopen("http://172.17.66.212:8080/json/" + ip) as geoServer:
-                location = json.loads(str(geoServer.read(), "utf-8"))
-                summaryEntry['location'] = location
+            summary_entry['ip'] = ip
+            url = "http://" + self.config['freegeoip']['address'] + ":" + self.config['freegeoip']['port'] + \
+                  "/json/" + ip
+            with urllib.request.urlopen(url) as freegeoip_server:
+                location = json.loads(str(freegeoip_server.read(), "utf-8"))
+                summary_entry['location'] = location
 
-        return item
+        return (True, item)
 
 
 class EventConsumer(object):
     def __init__(self):
-        self.cond = threading.Condition()
-        self.data = None
+        self.queue = queue.Queue()
 
     def consume(self, data):
-        self.cond.acquire()
-        self.data = data
-        self.cond.notify()
-        self.cond.release()
+        self.queue.put(data)
 
     def get_data(self):
-        self.cond.acquire()
-        while self.data == None:
-            self.cond.wait()
-        data = self.data
-        self.data = None
-        self.cond.release()
-        return data
-
-
-
+        return self.queue.get()
