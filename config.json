@@ -1,11 +1,11 @@
 {
   "redis": {
-    "address": "localhost",
+    "address": "172.17.66.212",
     "port": 6379
   },
   "freegeoip": {
-    "address": "localhost",
-    "port": 8081
+    "address": "172.17.66.212",
+    "port": 8080
   },
   "servers": [
     {

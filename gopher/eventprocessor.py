@@ -1,5 +1,5 @@
 import queue
-from typing import Mapping, Tuple
+from typing import Mapping, Tuple, Any
 
 import redis
 import threading
@@ -8,6 +8,18 @@ import json
 import socket
 import struct
 import urllib.request
+
+
+class EventConsumer(object):
+    def __init__(self):
+        self.queue = queue.Queue()
+
+    def consume(self, data):
+        self.queue.put(data)
+
+    def get_data(self):
+        print("Queue size={}".format(self.queue.qsize()))
+        return self.queue.get()
 
 
 class EventProcessor(threading.Thread):
@@ -35,7 +47,7 @@ class EventProcessor(threading.Thread):
                 for consumer in self.consumers:
                     consumer.consume(processed_item)
 
-    def process(self, item: Mapping[str, any]) -> Tuple[bool, any]:
+    def process(self, item: Mapping[str, Any]) -> Tuple[bool, Any]:
         pass
 
 
@@ -58,12 +70,12 @@ def hex_to_ip(ip_hex: str):
 
 
 class QueriesSummaryEventProcessor(EventProcessor):
-    def __init__(self, r: redis.StrictRedis, config: Mapping[str, any]):
+    def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
         super().__init__(r)
         self.subscribe("QueriesSummary")
         self.config = config
 
-    def process(self, item: Mapping[str, any]) -> Tuple[bool, any]:
+    def process(self, item: Mapping[str, Any]) -> Tuple[bool, Any]:
         for summary_entry in item['data']:
             ip = hex_to_ip(summary_entry['ip'])
 
@@ -71,21 +83,10 @@ class QueriesSummaryEventProcessor(EventProcessor):
                 continue
 
             summary_entry['ip'] = ip
-            url = "http://" + self.config['freegeoip']['address'] + ":" + self.config['freegeoip']['port'] + \
+            url = "http://" + self.config['freegeoip']['address'] + ":" + str(self.config['freegeoip']['port']) + \
                   "/json/" + ip
             with urllib.request.urlopen(url) as freegeoip_server:
                 location = json.loads(str(freegeoip_server.read(), "utf-8"))
                 summary_entry['location'] = location
 
         return (True, item)
-
-
-class EventConsumer(object):
-    def __init__(self):
-        self.queue = queue.Queue()
-
-    def consume(self, data):
-        self.queue.put(data)
-
-    def get_data(self):
-        return self.queue.get()
