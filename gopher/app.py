@@ -1,6 +1,7 @@
 import redis
 import json
-from gopher import EventConsumer, ServerDataEventProcessor, EventProcessor, QueriesSummaryEventProcessor
+from gopher import EventConsumer, ServerDataEventProcessor, EventProcessor, QueriesSummaryEventProcessor,\
+    TopKEventProcessor
 from flask import Flask, Response
 
 app = Flask(__name__)
@@ -10,7 +11,8 @@ r = redis.StrictRedis(host=config['redis']['address'], port=config['redis']['por
 
 event_processors = {
     'server_data': ServerDataEventProcessor(r),
-    'queries_summary': QueriesSummaryEventProcessor(r, config)
+    'queries_summary': QueriesSummaryEventProcessor(r, config),
+    'topk': TopKEventProcessor(r, config)
 }
 
 for name, event_processor in event_processors.items():
@@ -57,3 +59,4 @@ def geo():
 @app.route("/servers_location")
 def servers_location():
     return json.dumps(config['servers']) + "\n\n"
+
