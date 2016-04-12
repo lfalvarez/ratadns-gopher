@@ -1,7 +1,7 @@
 import redis
 import json
 from gopher import EventConsumer, ServerDataEventProcessor, EventProcessor, QueriesSummaryEventProcessor,\
-    TopKEventProcessor
+    TopKEventProcessor, MalformedPacketsEventProcessor
 from flask import Flask, Response
 
 app = Flask(__name__)
@@ -13,6 +13,7 @@ event_processors = {
     'server_data': ServerDataEventProcessor(r),
     'queries_summary': QueriesSummaryEventProcessor(r, config),
     'topk': TopKEventProcessor(r, config)
+    # 'malformed': MalformedPacketsEventProcessor(r, config)
 }
 
 for name, event_processor in event_processors.items():

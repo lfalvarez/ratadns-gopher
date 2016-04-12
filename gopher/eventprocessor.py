@@ -94,14 +94,25 @@ class QueriesSummaryEventProcessor(EventProcessor):
         return (True, item)
 
 
-def order_name_data(item: Mapping[str, int]) -> list:
+def order_name_count(item: Mapping[str, int]) -> list:
     ordered_data = []
 
     for name_counter in item:
-        ordered_data.append((name_counter, item[name_counter]))
+        ordered_data.append(({'name': name_counter}, item[name_counter]))
 
     ordered_data = sorted(ordered_data, key=get_count)
     return ordered_data
+
+
+def order_malformed_data(item: Mapping[str, Any]) -> list:
+    # ordered_data = []
+    #
+    # for name_counter in item:
+    #     ordered_data.append(({'name': name_counter, 'data': }, item[name_counter]))
+    #
+    # ordered_data = sorted(ordered_data, key=get_count)
+    # return ordered_data
+    return None
 
 
 def get_count(item: Tuple[str, int])-> int:
@@ -116,67 +127,81 @@ def redis_server_set(server: str, time: int) -> str:
     return "topk_{}_{}".format(time, server)
 
 
-class TopKEventProcessor(EventProcessor):
-    def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
+class TopCountEventProcessor(EventProcessor):
+    def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any], config_data: Mapping[str, Any]):
         super().__init__(r)
-        self.subscribe("topk")
+        self.subscribe(config_data['channel'])
         self.redis = r
+        self.name = config_data['redis_set']
+        self.order_fun = config_data['order_fun']
         self.config = config
 
     def process(self, item: Mapping[str, Any]) -> Tuple[bool, Any]:
         top_data = {}
         server_name = item['serverId']
         item.pop('serverId')
-        name_tuples = order_name_data(item['data'])
+        name_tuples = self.order_fun(item['data'])
 
         now = Time.mktime(datetime.datetime.now().timetuple()) * 1000.0
 
-        for time_index in range(0, len(self.config['topk']['times'])):
-            time = self.config['topk']['times'][time_index]*60
-            server_set = redis_server_set(server_name, time)
-            global_set = "global_{}".format(time)
-            historic_set = "historic_jsons_" + server_name
+        for time_index in range(0, len(self.config[self.name]['times'])):
+            time = self.config[self.name]['times'][time_index]*60
+            server_set = self.name + ":" + redis_server_set(server_name, time)
+            global_set = self.name + ":global_{}".format(time)
+            historic_set = self.name + ":historic_jsons_" + server_name + "_" + str(time)
 
             self.redis.zadd(historic_set, now, json.dumps(name_tuples))
 
             multi = self.redis.pipeline()
             for element in name_tuples:
-                multi.zincrby(server_set, element[0], element[1])
-                multi.zincrby(global_set, element[0], element[1])
+                multi.zincrby(server_set, element[0]['name'], element[1])
+                multi.zincrby(global_set, element[0]['name'], element[1])
 
             multi.execute()
 
             script = """local old_jsons = redis.call('zrangebyscore', KEYS[1], '-inf' , ARGV[1]);
-                            redis.call('zremrangebyscore', KEYS[1], '-inf', ARGV[1]);
-                            return old_jsons;"""
+                        redis.call('zremrangebyscore', KEYS[1], '-inf', ARGV[1]) ;
+                        return old_jsons;"""
 
             get_json = self.redis.register_script(script)
-            jsons = get_json(keys=[historic_set], args=[now - time * 1000])
-
+            jsons = get_json(keys=[historic_set], args=[now - time * 1000.0])
+          
             for i in range(0, len(jsons)):
                 old_queries = json.loads(jsons[i].decode("utf-8"))
 
                 for j in range(0, len(old_queries)):
-                    multi.zincrby(server_set, old_queries[j][0], -1 * old_queries[j][1])
-                    multi.zincrby(global_set, old_queries[j][0], -1 * old_queries[j][1])
+                    multi.zincrby(server_set, old_queries[j][0]['name'], -1 * old_queries[j][1])
+                    multi.zincrby(global_set, old_queries[j][0]['name'], -1 * old_queries[j][1])
 
                 multi.zremrangebyscore(server_set, "-inf", 0)
-                multi.zremrangebyscore(global_set, "-inf", 0)
+                multi.zremrangebyscore(global_set, 0, 0)
 
             multi.execute()
 
             time_data = {}
             for server in self.config['servers']:
                 time_data[server['name']] = format_redis_data(
-                    self.redis.zrevrange(redis_server_set(server['name'], time),
-                                         0, 4, withscores=True))
+                        self.redis.zrevrange(self.name + ":" + redis_server_set(server['name'], time),
+                                             0, 4, withscores=True))
 
             time_data['global'] = format_redis_data(self.redis.zrevrange(global_set, 0, 4, withscores=True))
-            top_data[self.config['topk']['times'][time_index]] = time_data
+            top_data[self.config[self.name]['times'][time_index]] = time_data
 
         item['data'] = json.dumps(top_data)
         return (True,item)
 
+
+class TopKEventProcessor(TopCountEventProcessor):
+    def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
+        topk_data = {'channel': "topk", "redis_set": "topk", "order_fun": order_name_count}
+        super().__init__(r, config, topk_data)
+
+
+class MalformedPacketsEventProcessor(TopCountEventProcessor):
+    def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
+        malformed_data = {'channel': "QueriesWithUnderscoredName", "redis_set": "malformed",
+                          "order_fun": order_malformed_data}
+        super().__init__(r, config, malformed_data)
 
 
 

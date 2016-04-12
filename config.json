@@ -1,11 +1,11 @@
 {
   "redis": {
-    "address": "172.17.66.212",
+    "address": "200.7.6.140",
     "port": 6379
   },
   "freegeoip": {
-    "address": "172.17.66.212",
-    "port": 8080
+    "address": "200.7.6.140",
+    "port": 8081
   },
   "servers": [
     {
@@ -26,6 +26,10 @@
     }
   ],
   "topk": {
-    "times": [1,2]
+    "times": [1, 2, 3]
+  },
+  "malformed": {
+    "times": [1]
   }
+
 }
