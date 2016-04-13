@@ -20,7 +20,6 @@ class EventConsumer(object):
         self.queue.put(data)
 
     def get_data(self):
-        print("Queue size={}".format(self.queue.qsize()))
         return self.queue.get()
 
 
