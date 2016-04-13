@@ -187,7 +187,7 @@ class TopCountEventProcessor(EventProcessor):
             time_data['global'] = format_redis_data(self.redis.zrevrange(global_set, 0, 4, withscores=True))
             top_data[self.config[self.name]['times'][time_index]] = time_data
 
-        item['data'] = json.dumps(top_data)
+        item['data'] = top_data
         return (True,item)
 
 
