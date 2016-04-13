@@ -12,8 +12,8 @@ r = redis.StrictRedis(host=config['redis']['address'], port=config['redis']['por
 event_processors = {
     'server_data': ServerDataEventProcessor(r),
     'queries_summary': QueriesSummaryEventProcessor(r, config),
-    'topk': TopKEventProcessor(r, config)
-    # 'malformed': MalformedPacketsEventProcessor(r, config)
+    # 'topk': TopKEventProcessor(r, config),
+    'malformed': MalformedPacketsEventProcessor(r, config)
 }
 
 for name, event_processor in event_processors.items():

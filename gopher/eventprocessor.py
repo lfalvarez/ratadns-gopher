@@ -105,14 +105,19 @@ def order_name_count(item: Mapping[str, int]) -> list:
 
 
 def order_malformed_data(item: Mapping[str, Any]) -> list:
-    # ordered_data = []
-    #
-    # for name_counter in item:
-    #     ordered_data.append(({'name': name_counter, 'data': }, item[name_counter]))
-    #
-    # ordered_data = sorted(ordered_data, key=get_count)
-    # return ordered_data
-    return None
+    ordered_data = {}
+
+    for name_counter in item:
+        if name_counter in ordered_data:
+            number = ordered_data[name_counter][1] + 1
+            ordered_data[name_counter] = ({'name': name_counter, 'data': item[name_counter]}, number)
+        else:
+            ordered_data[name_counter] = ({'name': name_counter, 'data': item[name_counter]}, 1)
+
+    data_list = list(ordered_data.values())
+    data_list = sorted(data_list, key=get_count)
+
+    return data_list
 
 
 def get_count(item: Tuple[str, int])-> int:
@@ -170,6 +175,7 @@ class TopCountEventProcessor(EventProcessor):
                 old_queries = json.loads(jsons[i].decode("utf-8"))
 
                 for j in range(0, len(old_queries)):
+                    print(old_queries[j])
                     multi.zincrby(server_set, old_queries[j][0]['name'], -1 * old_queries[j][1])
                     multi.zincrby(global_set, old_queries[j][0]['name'], -1 * old_queries[j][1])
 
