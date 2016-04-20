@@ -96,12 +96,14 @@ class QueriesSummaryEventProcessor(EventProcessor):
 
 def order_name_count(item: Mapping[str, int]) -> list:
     ordered_data = []
+    total = 0
 
     for name_counter in item:
         ordered_data.append(({'name': name_counter}, item[name_counter]))
+        total += item[name_counter]
 
     ordered_data = sorted(ordered_data, key=get_count)
-    return ordered_data
+    return [ordered_data,total]
 
 
 def order_malformed_data(item: Mapping[str, Any]) -> list:
@@ -117,15 +119,15 @@ def order_malformed_data(item: Mapping[str, Any]) -> list:
     data_list = list(ordered_data.values())
     data_list = sorted(data_list, key=get_count)
 
-    return data_list
+    return [data_list, len(item)]
 
 
 def get_count(item: Tuple[str, int])-> int:
     return item[1]
 
 
-def format_redis_data(l: list)->list:
-    return list(map(lambda x: (x[0].decode("utf-8"), int(x[1])), l))
+def format_redis_data(l: list, total: int)->list:
+    return list(map(lambda x: (x[0].decode("utf-8"), int(x[1]), (x[1]/total) if total > 0 else 0), l))
 
 
 def redis_server_set(server: str, time: int) -> str:
@@ -140,12 +142,17 @@ class TopCountEventProcessor(EventProcessor):
         self.name = config_data['redis_set']
         self.order_fun = config_data['order_fun']
         self.config = config
+        self.total = {}
+
+        n = len(self.config[self.name]['times'])
+        for server in self.config['servers']:
+            self.total[server['name']] = [0]*n
 
     def process(self, item: Mapping[str, Any]) -> Tuple[bool, Any]:
         top_data = {}
         server_name = item['serverId']
         item.pop('serverId')
-        name_tuples = self.order_fun(item['data'])
+        [name_tuples,total] = self.order_fun(item['data'])
 
         now = Time.mktime(datetime.datetime.now().timetuple()) * 1000.0
 
@@ -154,8 +161,10 @@ class TopCountEventProcessor(EventProcessor):
             server_set = self.name + ":" + redis_server_set(server_name, time)
             global_set = self.name + ":global_{}".format(time)
             historic_set = self.name + ":historic_jsons_" + server_name + "_" + str(time)
+            total_set = self.name + ":total_" + server_name + "_" + str(time)
 
             self.redis.zadd(historic_set, now, json.dumps(name_tuples))
+            self.redis.zadd(total_set, now, total)
 
             multi = self.redis.pipeline()
             for element in name_tuples:
@@ -163,6 +172,14 @@ class TopCountEventProcessor(EventProcessor):
                 multi.zincrby(global_set, element[0]['name'], element[1])
 
             multi.execute()
+
+            total_res = self.redis.zrangebyscore(total_set, now - time * 1000.0, "inf")
+            server_total = 0
+            for i in range(0, len(total_res)):
+                server_total += int(total_res[i])
+
+            self.redis.zremrangebyscore(total_set, "-inf", now - time * 1000.0)
+            self.total[server_name][time_index] = server_total
 
             script = """local old_jsons = redis.call('zrangebyscore', KEYS[1], '-inf' , ARGV[1]);
                         redis.call('zremrangebyscore', KEYS[1], '-inf', ARGV[1]) ;
@@ -175,22 +192,24 @@ class TopCountEventProcessor(EventProcessor):
                 old_queries = json.loads(jsons[i].decode("utf-8"))
 
                 for j in range(0, len(old_queries)):
-                    print(old_queries[j])
                     multi.zincrby(server_set, old_queries[j][0]['name'], -1 * old_queries[j][1])
                     multi.zincrby(global_set, old_queries[j][0]['name'], -1 * old_queries[j][1])
 
                 multi.zremrangebyscore(server_set, "-inf", 0)
-                multi.zremrangebyscore(global_set, 0, 0)
+                multi.zremrangebyscore(global_set, "-inf", 0)
 
             multi.execute()
 
             time_data = {}
+            servers_total = 0
             for server in self.config['servers']:
+                servers_total += self.total[server['name']][time_index]
                 time_data[server['name']] = format_redis_data(
                         self.redis.zrevrange(self.name + ":" + redis_server_set(server['name'], time),
-                                             0, 4, withscores=True))
+                                             0, 4, withscores=True), self.total[server_name][time_index])
 
-            time_data['global'] = format_redis_data(self.redis.zrevrange(global_set, 0, 4, withscores=True))
+            time_data['global'] = format_redis_data(self.redis.zrevrange(global_set, 0, 4, withscores=True),
+                                                    servers_total)
             top_data[self.config[self.name]['times'][time_index]] = time_data
 
         item['data'] = json.dumps(top_data)

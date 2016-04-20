@@ -8,11 +8,12 @@ app = Flask(__name__)
 
 config = json.load(open("config.json"))  # TODO: Think how to pass configuration file
 r = redis.StrictRedis(host=config['redis']['address'], port=config['redis']['port'], db=0)
+r.flushall()
 
 event_processors = {
     'server_data': ServerDataEventProcessor(r),
     'queries_summary': QueriesSummaryEventProcessor(r, config),
-    # 'topk': TopKEventProcessor(r, config),
+    'topk': TopKEventProcessor(r, config),
     'malformed': MalformedPacketsEventProcessor(r, config)
 }
 
