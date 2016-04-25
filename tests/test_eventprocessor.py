@@ -1,6 +1,6 @@
-from gopher.eventprocessor import EventConsumer, hex_to_ip, ServerDataEventProcessor
+from gopher.eventprocessor import EventConsumer, hex_to_ip, ServerDataEventProcessor, QueriesSummaryEventProcessor
 import random, threading, redis, redis.client
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, call
 import unittest
 
 class TestEventProcessor(unittest.TestCase):
@@ -32,8 +32,25 @@ class TestHexToIP(unittest.TestCase):
         self.assertIsNone(hex_to_ip("a"))
         self.assertIsNone(hex_to_ip("bababa"))
 
-
 class TestServerDataEventProcessor(unittest.TestCase):
-    def test1(self):
-        # TODO: try to mock the result r.pubsub() in order to test that we are subscribing to the correct channels
-        pass
+    def test_correct_channels(self):
+        mock = MagicMock() # mock redis connection
+        ep = ServerDataEventProcessor(mock)
+        calls = [call('QueriesPerSecond'), call('AnswersPerSecond')]
+        mock.pubsub().subscribe.assert_has_calls(calls)
+
+        a = random.random()
+        publish, result = ep.process(a)
+        self.assertTrue(publish)
+        self.assertEqual(result, a)
+
+
+class TestQueriesSummaryEventProcessor(unittest.TestCase):
+    def test_correct_channels(self):
+        mock = MagicMock()
+        ep = QueriesSummaryEventProcessor(mock, {"freegeoip" : {"address" : "200.7.6.140", "port": 8081}})
+
+        mock.pubsub().subscribe.assert_called_with("QueriesSummary")
+
+        
+
