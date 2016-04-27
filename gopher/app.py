@@ -63,5 +63,5 @@ def create_wsgi_app(name):
     def servers_location():
         return json.dumps(config['servers']) + "\n\n"
 
-
+    return app
 
