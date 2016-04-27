@@ -1,15 +1,20 @@
-from gopher.eventprocessor import EventConsumer, hex_to_ip, ServerDataEventProcessor, QueriesSummaryEventProcessor
-import random, threading, redis, redis.client
-from unittest.mock import MagicMock, call
+import random
+import redis
+import redis.client
 import unittest
+from unittest.mock import MagicMock, call
+
+from gopher.eventprocessor import EventConsumer, hex_to_ip, ServerDataEventProcessor
+
 
 class TestEventProcessor(unittest.TestCase):
     def test1(self):
         ec = EventConsumer()
-        input = random.random()
-        ec.consume(input)
-        output = ec.get_data()
-        self.assertEqual(input, output)
+        input_value = random.random()
+        ec.consume(input_value)
+        output_value = ec.get_data()
+        self.assertEqual(input_value, output_value)
+
 
 class TestHexToIP(unittest.TestCase):
     def test1(self):
@@ -32,25 +37,19 @@ class TestHexToIP(unittest.TestCase):
         self.assertIsNone(hex_to_ip("a"))
         self.assertIsNone(hex_to_ip("bababa"))
 
-class TestServerDataEventProcessor(unittest.TestCase):
-    def test_correct_channels(self):
-        mock = MagicMock() # mock redis connection
-        ep = ServerDataEventProcessor(mock)
-        calls = [call('QueriesPerSecond'), call('AnswersPerSecond')]
-        mock.pubsub().subscribe.assert_has_calls(calls)
 
+class TestServerDataEventProcessor(unittest.TestCase):
+    def setUp(self):
+        self.redis_mock = MagicMock(spec=redis.StrictRedis)  # mock redis connection
+        # noinspection PyTypeChecker
+        self.ep = ServerDataEventProcessor(self.redis_mock)
+
+    def test_correct_channels(self):
+        calls = [call('QueriesPerSecond'), call('AnswersPerSecond')]
+        self.redis_mock.pubsub().subscribe.assert_has_calls(calls)
+
+    def test_process(self):
         a = random.random()
-        publish, result = ep.process(a)
+        publish, result = self.ep.process(a)
         self.assertTrue(publish)
         self.assertEqual(result, a)
-
-
-class TestQueriesSummaryEventProcessor(unittest.TestCase):
-    def test_correct_channels(self):
-        mock = MagicMock()
-        ep = QueriesSummaryEventProcessor(mock, {"freegeoip" : {"address" : "200.7.6.140", "port": 8081}})
-
-        mock.pubsub().subscribe.assert_called_with("QueriesSummary")
-
-        
-
