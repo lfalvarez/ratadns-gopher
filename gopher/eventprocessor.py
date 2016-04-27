@@ -71,34 +71,17 @@ def hex_to_ip(ip_hex: str):
         return None  # Refactor this!
 
 
-class QueriesSummaryEventProcessor(EventProcessor):
-    def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
-        super().__init__(r)
-        self.subscribe("QueriesSummary")
-        self.config = config
-
-    def process(self, item: Mapping[str, Any]) -> Tuple[bool, Any]:
-        for summary_entry in item['data']:
-            ip = hex_to_ip(summary_entry['ip'])
-
-            if ip == None:
-                continue
-
-            summary_entry['ip'] = ip
-            url = "http://" + self.config['freegeoip']['address'] + ":" + str(self.config['freegeoip']['port']) + \
-                  "/json/" + ip
-            with urllib.request.urlopen(url) as freegeoip_server:
-                location = json.loads(str(freegeoip_server.read(), "utf-8"))
-                summary_entry['location'] = location
-
-        return (True, item)
-
-
 class WindowAlgorithmEventProcessor(EventProcessor):
-    def __init__(self, name: str, r: redis.StrictRedis):
+    def __init__(self, name: str, r: redis.StrictRedis, config: Mapping[str, Any]):
         super().__init__(r)
+        self.config = config
         self.name = name
         self.redis = r
+        self.total = {}
+
+        n = len(self.config[self.name]['times'])
+        for server in self.config['servers']:
+            self.total[server['name']] = [0]*n
 
     def order_data(self,  item: Mapping[str, int]) -> list:
         pass
@@ -106,7 +89,7 @@ class WindowAlgorithmEventProcessor(EventProcessor):
     def timespan_set(self, server, time):
         pass
 
-    def increase_set(self, element_list: Mapping[str, int], set_list: list, time_diff: int, server: str, time_index: int):
+    def increase_set(self, element_list: Mapping[str, int], set_list: list, current_time: int, server: str, time: int, time_index: int):
         multi = self.redis.pipeline()
 
         for element in element_list:
@@ -125,6 +108,7 @@ class WindowAlgorithmEventProcessor(EventProcessor):
         for server in self.config['servers']:
             servers_total += self.total[server['name']][time_index]
             time_data[server['name']] = self.format_data(self.get_top_data(server['name'], time), self.total[server_name][time_index])
+
         return time_data
 
     def format_data(self):
@@ -167,9 +151,10 @@ class WindowAlgorithmEventProcessor(EventProcessor):
         for time_index in range(0, len(self.config[self.name]['times'])):
             time = self.config[self.name]['times'][time_index]*60
 
-            self.increase_timespan(now, self.timespan_set(server_name, time), json.dumps(ordered_data[0]), ordered_data[1])
-            self.increase_set(ordered_data[0], self.server_list(server_name, time), now - time*1000.0, server_name, time_index)
-            self.cleanup_old_data(self.server_list(server_name, time)[0:1], self.timespan_set(server_name, time), now-time*1000.0)
+            self.increase_timespan(now, self.timespan_set(server_name, time), ordered_data[0], ordered_data[1])
+
+            self.increase_set(ordered_data[0], self.server_list(server_name, time), now, server_name, time, time_index)
+            self.cleanup_old_data(self.server_list(server_name, time), self.timespan_set(server_name, time), now-time*1000.0)
 
             data[time] = self.get_top(time_index, time, server_name)
 
@@ -177,28 +162,95 @@ class WindowAlgorithmEventProcessor(EventProcessor):
         return (True,item)
 
 
+class QueriesSummaryEventProcessor(WindowAlgorithmEventProcessor):
+    def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
+        super().__init__('summary', r, config)
+        self.subscribe("QueriesSummary")
+
+    def server_list(self, server: str, time: int):
+        return ["summary:ip_{}_{}".format(server, time), "summary:ip_size_{}_{}".format(server, time),
+                "summary:historic_{}_{}".format(server, time)]
+
+    def timespan_set(self, server, time):
+        return "summary:ip_{}_{}".format(server, time)
+
+    def order_data(self,  item: Mapping[str, int]):
+        return [item, 0]
+
+    def increase_timespan(self, current_time, timestamp_set, item, total):
+        for element in item:
+            super().increase_timespan(current_time, timestamp_set, element['ip'], total)
+
+    def increase_set(self, element_list: Mapping[str, int], historic_set: list, current_time: int, server: str, time: int,
+                     time_index: int):
+        for element in element_list:
+            ip = element['ip']
+            queries_list = element['queries']
+            time_diff = current_time - time*1000.0
+            old_json = self.redis.hget("summary:historic_{}_{}".format(server, time), ip)
+            total = 0
+
+            if old_json is not None:
+                old_queries = json.loads(old_json.decode("utf-8"))
+                for i in range(0, len(old_queries)):
+                    query = old_queries[i]
+                    if query[1] < time_diff:
+                        old_queries = old_queries[0:i]
+                        break
+                    else:
+                        total += len(query[0])
+                old_queries.insert(0, (queries_list, current_time))
+
+                self.redis.hset("summary:historic_{}_{}".format(server, time), ip, json.dumps(old_queries))
+                self.redis.zadd("summary:ip_size_{}_{}".format(server, time), total, ip)
+            else:
+                new_queries = [(queries_list, current_time)]
+                total = len(queries_list)
+
+                self.redis.hset("summary:historic_{}_{}".format(server, time), ip, json.dumps(new_queries))
+                self.redis.zadd("summary:ip_size_{}_{}".format(server, time), total, ip)
+
+    def cleanup_old_data(self, set_list, timespan_set, time_diff):
+        old_elements = self.redis.zrangebyscore(timespan_set, "-inf", time_diff)
+
+        for element in old_elements:
+            self.redis.zrem(set_list[0], element)
+            self.redis.zrem(set_list[1], element)
+            self.redis.hdel(set_list[2], element)
+
+    def get_top_data(self, server: str, time: int):
+        top_elements = self.redis.zrevrange("summary:ip_size_{}_{}".format(server, time), 0, 4, withscores=True)
+        top_list = []
+
+        for element in top_elements:
+            ip = element[0].decode("utf-8")
+            queries = json.loads(self.redis.hget("summary:historic_{}_{}".format(server, time), ip).decode("utf-8"))
+            top_list.append([ip, [x[0] for x in queries], element[1]])
+
+        return top_list
+
+    def format_data(self, l: list, total: int) -> list:
+        return list(map(lambda x: (x[0], x[1], int(x[2]), (x[2]/total) if total > 0 else 0), l))
+
+
 class TopCountEventProcessor(WindowAlgorithmEventProcessor):
     def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any], config_data: Mapping[str, Any]):
-        super().__init__(config_data['redis_set'], r),
+        super().__init__(config_data['redis_set'], r, config)
         self.subscribe(config_data['channel'])
         self.redis = r
         self.name = config_data['redis_set']
-        self.config = config
-        self.total = {}
-
-        n = len(self.config[self.name]['times'])
-        for server in self.config['servers']:
-            self.total[server['name']] = [0]*n
 
     def timespan_set(self, server, time):
         return [self.name + ":historic_jsons_{}_{}".format(server, time),  self.name + ":total_{}_{}".format(server, time)]
 
     def increase_timespan(self, current_time, set_list, data, total):
-        super().increase_timespan(current_time, set_list[0], data[0], total)
+        super().increase_timespan(current_time, set_list[0], json.dumps(data)[0], total)
         self.redis.zadd(set_list[1], current_time, total)
 
-    def increase_set(self, element_list: Mapping[str, int], set_list: list, time_diff: int, server: str, time_index: int):
-        super().increase_set(element_list, set_list[:len(set_list)-2], time_diff, server, time_index)
+    def increase_set(self, element_list: Mapping[str, int], set_list: list, current_time: int, server: str, time: int,
+                     time_index: int):
+        time_diff = current_time - time*1000.0
+        super().increase_set(element_list, set_list[:len(set_list)-2], current_time, server, time, time_index)
         server_total = 0
 
         total_set = set_list[len(set_list)-1]
@@ -209,10 +261,6 @@ class TopCountEventProcessor(WindowAlgorithmEventProcessor):
 
         self.redis.zremrangebyscore(total_set, "-inf", time_diff)
         self.total[server][time_index] = server_total
-
-
-    def format_redis_data(l: list, total: int)->list:
-        return list(map(lambda x: (x[0].decode("utf-8"), int(x[1]), (x[1]/total) if total > 0 else 0), l))
 
     def server_list(self, server: str, time: int):
         return [self.name + ":{}_{}".format(server, time), self.name + ":global_{}".format(time),
