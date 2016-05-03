@@ -30,6 +30,10 @@
   },
   "malformed": {
     "times": [1]
+  },
+  "summary": {
+    "times": [1]
   }
+
 
 }
