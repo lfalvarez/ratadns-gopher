@@ -205,7 +205,7 @@ class TopCountEventProcessor(EventProcessor):
                 servers_total += self.total[server['name']][time_index]
                 time_data[server['name']] = format_redis_data(
                         self.redis.zrevrange(self.name + ":" + redis_server_set(server['name'], time),
-                                             0, 4, withscores=True), self.total[server_name][time_index])
+                                             0, 4, withscores=True), self.total[server['name']][time_index])
 
             time_data['global'] = format_redis_data(self.redis.zrevrange(global_set, 0, 4, withscores=True),
                                                     servers_total)
