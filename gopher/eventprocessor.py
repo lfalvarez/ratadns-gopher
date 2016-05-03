@@ -7,7 +7,6 @@ import json
 
 import socket
 import struct
-import urllib.request
 import datetime
 import time as Time
 
@@ -63,14 +62,6 @@ class ServerDataEventProcessor(EventProcessor):
         return (True, item)
 
 
-def hex_to_ip(ip_hex: str):
-    if len(ip_hex) == 8 or len(ip_hex) == 7:
-        ip = int(ip_hex, 16)
-        return socket.inet_ntoa(struct.pack(">L", ip))
-    else:  # IPV6 Not supported! (yet)
-        return None  # Refactor this!
-
-
 class WindowAlgorithmEventProcessor(EventProcessor):
     def __init__(self, name: str, r: redis.StrictRedis, config: Mapping[str, Any]):
         super().__init__(r)
@@ -89,7 +80,9 @@ class WindowAlgorithmEventProcessor(EventProcessor):
     def timespan_set(self, server, time):
         pass
 
-    def increase_set(self, element_list: Mapping[str, int], set_list: list, current_time: int, server: str, time: int, time_index: int):
+    def increase_set(self, element_list: Mapping[str, int], set_list: list, current_time: int, server: str, time: int,
+                     time_index: int):
+        time_diff = current_time - time*1000.0
         multi = self.redis.pipeline()
 
         for element in element_list:
@@ -98,8 +91,21 @@ class WindowAlgorithmEventProcessor(EventProcessor):
 
         multi.execute()
 
+        self.increase_total(set_list[len(set_list)-1], time_diff, server, time_index)
+
+    def increase_total(self, total_set, time_diff, server, time_index):
+        server_total = 0
+        total_res = self.redis.zrangebyscore(total_set, time_diff, "inf")
+
+        for i in range(0, len(total_res)):
+            server_total += int(total_res[i])
+
+        self.redis.zremrangebyscore(total_set, "-inf", time_diff)
+        self.total[server][time_index] = server_total
+
     def increase_timespan(self, current_time, timestamp_set, data, total):
-        self.redis.zadd(timestamp_set, current_time, data)
+        self.redis.zadd(timestamp_set[0], current_time, json.dumps(data)[0])
+        self.redis.zadd(timestamp_set[1], current_time, total)
 
     def get_top(self, time_index, time, server_name):
         time_data = {}
@@ -107,7 +113,7 @@ class WindowAlgorithmEventProcessor(EventProcessor):
 
         for server in self.config['servers']:
             servers_total += self.total[server['name']][time_index]
-            time_data[server['name']] = self.format_data(self.get_top_data(server['name'], time), self.total[server_name][time_index])
+            time_data[server['name']] = self.format_data(self.get_top_data(server['name'], time), self.total[server['name']][time_index])
 
         return time_data
 
@@ -169,13 +175,20 @@ class QueriesSummaryEventProcessor(WindowAlgorithmEventProcessor):
 
     def server_list(self, server: str, time: int):
         return ["summary:ip_{}_{}".format(server, time), "summary:ip_size_{}_{}".format(server, time),
-                "summary:historic_{}_{}".format(server, time)]
+                "summary:historic_{}_{}".format(server, time), self.name + ":total_{}_{}".format(server, time)]
 
     def timespan_set(self, server, time):
-        return "summary:ip_{}_{}".format(server, time)
+        return ["summary:ip_{}_{}".format(server, time), "summary:total_{}_{}".format(server, time)]
 
     def order_data(self,  item: Mapping[str, int]):
-        return [item, 0]
+        total = 0
+        for ip in item:
+            queries = ip['queries']
+            for type in queries:
+                total += len(queries[type])
+
+        return [item, total]
+
 
     def increase_timespan(self, current_time, timestamp_set, item, total):
         for element in item:
@@ -183,10 +196,11 @@ class QueriesSummaryEventProcessor(WindowAlgorithmEventProcessor):
 
     def increase_set(self, element_list: Mapping[str, int], historic_set: list, current_time: int, server: str, time: int,
                      time_index: int):
+        time_diff = current_time - time*1000.0
+        super().increase_total(historic_set[len(historic_set)-1], time_diff, server, time_index)
         for element in element_list:
             ip = element['ip']
             queries_list = element['queries']
-            time_diff = current_time - time*1000.0
             old_json = self.redis.hget("summary:historic_{}_{}".format(server, time), ip)
             total = 0
 
@@ -241,26 +255,11 @@ class TopCountEventProcessor(WindowAlgorithmEventProcessor):
         self.name = config_data['redis_set']
 
     def timespan_set(self, server, time):
-        return [self.name + ":historic_jsons_{}_{}".format(server, time),  self.name + ":total_{}_{}".format(server, time)]
-
-    def increase_timespan(self, current_time, set_list, data, total):
-        super().increase_timespan(current_time, set_list[0], json.dumps(data)[0], total)
-        self.redis.zadd(set_list[1], current_time, total)
+        return [self.name + ":historic_jsons_{}_{}".format(server, time), self.name + ":total_{}_{}".format(server, time)]
 
     def increase_set(self, element_list: Mapping[str, int], set_list: list, current_time: int, server: str, time: int,
                      time_index: int):
-        time_diff = current_time - time*1000.0
-        super().increase_set(element_list, set_list[:len(set_list)-2], current_time, server, time, time_index)
-        server_total = 0
-
-        total_set = set_list[len(set_list)-1]
-        total_res = self.redis.zrangebyscore(total_set, time_diff, "inf")
-
-        for i in range(0, len(total_res)):
-            server_total += int(total_res[i])
-
-        self.redis.zremrangebyscore(total_set, "-inf", time_diff)
-        self.total[server][time_index] = server_total
+        super().increase_set(element_list, set_list[:len(set_list)], current_time, server, time, time_index)
 
     def server_list(self, server: str, time: int):
         return [self.name + ":{}_{}".format(server, time), self.name + ":global_{}".format(time),
