@@ -241,12 +241,22 @@ class QueriesSummaryEventProcessor(WindowAlgorithmEventProcessor):
         for element in top_elements:
             ip = element[0].decode("utf-8")
             queries = json.loads(self.redis.hget("summary:historic_{}_{}".format(server, time), ip).decode("utf-8"))
-            top_list.append((ip, [x[0] for x in queries], element[1]))
+            top_list.append((ip, self.collapse_by_type(queries), element[1]))
 
         return top_list
 
     def format_data(self, l: list, total: int) -> list:
         return list(map(lambda x: (x[0], x[1], int(x[2]), (x[2]/total) if total > 0 else 0), l))
+
+    def collapse_by_type(self, queries):
+        queries_by_type = {}
+        for element in queries:
+            query = element[0]
+            for type in query:
+                queries_by_type.setdefault(type, [])
+                queries_by_type[type] = queries_by_type[type] + query[type]
+
+        return queries_by_type
 
 
 class TopCountEventProcessor(WindowAlgorithmEventProcessor):
