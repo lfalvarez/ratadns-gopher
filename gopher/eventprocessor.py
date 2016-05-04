@@ -163,7 +163,7 @@ class WindowAlgorithmEventProcessor(EventProcessor):
 
             data[time] = self.get_top(time_index, time, server_name)
 
-        item['data'] = json.dumps(data)
+        item['data'] = data
         return (True,item)
 
 
