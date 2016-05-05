@@ -1,26 +1,29 @@
 import redis
 import json
-from gopher import EventConsumer, ServerDataEventProcessor, EventProcessor, QueriesSummaryEventProcessor,\
+from gopher import EventConsumer, ServerDataEventProcessor, EventProcessor, QueriesSummaryEventProcessor, \
     TopKEventProcessor, MalformedPacketsEventProcessor
 from flask import Flask, Response
 
+
 def create_wsgi_app(name):
     app = Flask(name)
+
+    event_processors = {
+        'server_data': ServerDataEventProcessor,
+        'queries_summary': QueriesSummaryEventProcessor,
+        'topk': TopKEventProcessor,
+        'malformed': MalformedPacketsEventProcessor
+    }
 
     config = json.load(open("config.json"))  # TODO: Think how to pass configuration file
     r = redis.StrictRedis(host=config['redis']['address'], port=config['redis']['port'], db=0)
     r.flushall()
 
-    event_processors = {
-        'server_data': ServerDataEventProcessor(r),
-        'queries_summary': QueriesSummaryEventProcessor(r, config),
-        'topk': TopKEventProcessor(r, config),
-        'malformed': MalformedPacketsEventProcessor(r, config)
-    }
+    active_event_processors = {ep_name: event_processors[ep_name](r, config) for ep_name in
+                               config['active_event_processors']}
 
-    for name, event_processor in event_processors.items():
+    for name, event_processor in active_event_processors.items():
         event_processor.start()
-
 
     def create_sse_response(event_processor: EventProcessor) -> Response:
         def stream():
@@ -37,31 +40,18 @@ def create_wsgi_app(name):
                         mimetype='text/event-stream',
                         headers={'Access-Control-Allow-Origin': '*'})
 
-
-    @app.route("/sse_data/<name>")
+    @app.route("/{}/<name>".format(config["sse_route"]))
     def sse_data(name=None):
         if name != None:
-            if name in event_processors:
-                return create_sse_response(event_processors[name])
+            if name in active_event_processors:
+                return create_sse_response(active_event_processors[name])
             else:
                 return None
         else:
             return None
 
-
-    @app.route("/servData")
-    def serv_data():
-        return create_sse_response(event_processors['server_data'])
-
-
-    @app.route("/geo")
-    def geo():
-        return create_sse_response(event_processors['queries_summary'])
-
-
-    @app.route("/servers_location")
+    @app.route("/{}".format(config["servers_location_route"]))
     def servers_location():
-        return json.dumps(config['servers']) + "\n\n"
+        return json.dumps(config['servers_info']) + "\n\n"
 
     return app
-

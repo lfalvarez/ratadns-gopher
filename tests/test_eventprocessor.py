@@ -20,7 +20,7 @@ class TestServerDataEventProcessor(unittest.TestCase):
     def setUp(self):
         self.redis_mock = MagicMock(spec=redis.StrictRedis)  # mock redis connection
         # noinspection PyTypeChecker
-        self.ep = ServerDataEventProcessor(self.redis_mock)
+        self.ep = ServerDataEventProcessor(self.redis_mock, None)
 
     def test_correct_channels(self):
         calls = [call('QueriesPerSecond'), call('AnswersPerSecond')]
