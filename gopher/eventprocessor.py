@@ -19,7 +19,6 @@ class EventConsumer(object):
         self.queue.put(data)
 
     def get_data(self):
-        print("Queue size={}".format(self.queue.qsize()))
         return self.queue.get()
 
 
@@ -53,7 +52,7 @@ class EventProcessor(threading.Thread):
 
 
 class ServerDataEventProcessor(EventProcessor):
-    def __init__(self, r: redis.StrictRedis):
+    def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
         super().__init__(r)
         self.subscribe("QueriesPerSecond")
         self.subscribe("AnswersPerSecond")
@@ -71,7 +70,7 @@ class WindowAlgorithmEventProcessor(EventProcessor):
         self.total = {}
 
         n = len(self.config[self.name]['times'])
-        for server in self.config['servers']:
+        for server in self.config['servers_info']:
             self.total[server['name']] = [0]*n
 
     def order_data(self,  item: Mapping[str, int]) -> list:
@@ -110,7 +109,7 @@ class WindowAlgorithmEventProcessor(EventProcessor):
         time_data = {}
         servers_total = 0
 
-        for server in self.config['servers']:
+        for server in self.config['servers_info']:
             servers_total += self.total[server['name']][time_index]
             time_data[server['name']] = self.format_data(self.get_top_data(server['name'], time), self.total[server['name']][time_index])
 
@@ -163,7 +162,7 @@ class WindowAlgorithmEventProcessor(EventProcessor):
 
             data[time] = self.get_top(time_index, time)
 
-        item['data'] = json.dumps(data)
+        item['data'] = data
         return (True,item)
 
 

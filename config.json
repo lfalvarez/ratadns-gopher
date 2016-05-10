@@ -7,10 +7,11 @@
     "address": "200.7.6.140",
     "port": 8081
   },
-  "servers": [
+  "servers_location_route" : "servers_location",
+  "servers_info": [
     {
       "name": "beaucheff",
-      "data": {
+      "location": {
         "longitude": -70.663777,
         "latitude": -33.463254,
         "country_name": "Chile"
@@ -18,15 +19,22 @@
     },
     {
       "name": "blanco",
-      "data": {
+      "location": {
         "longitude": -70.663777,
         "latitude": -33.463254,
         "country_name": "Chile"
       }
     }
   ],
+  "sse_route": "sse",
+  "active_event_processors": [
+    "server_data",
+    "queries_summary",
+    "topk",
+    "malformed"
+  ],
   "topk": {
-    "times": [1, 2, 3]
+    "times": [1, 5, 15]
   },
   "malformed": {
     "times": [1]

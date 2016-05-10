@@ -1,4 +1,4 @@
-# RaTA DNS - Gopher
+# RaTA DNS - Gopher [![Build Status](https://travis-ci.org/niclabs/ratadns-gopher.svg?branch=master)](https://travis-ci.org/niclabs/ratadns-gopher)
 
 RaTA DNS aggregator module. Service that process DNS packets information and sends it to a HTML5 SSE.
 
