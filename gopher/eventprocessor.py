@@ -89,7 +89,6 @@ class WindowAlgorithmEventProcessor(EventProcessor):
                 multi.zincrby(set, element[0]['name'], element[1])
 
         multi.execute()
-
         self.increase_total(set_list[len(set_list)-1], time_diff, server, time_index)
 
     def increase_total(self, total_set, time_diff, server, time_index):
@@ -106,7 +105,7 @@ class WindowAlgorithmEventProcessor(EventProcessor):
         self.redis.zadd(timestamp_set[0], current_time, json.dumps(data)[0])
         self.redis.zadd(timestamp_set[1], current_time, total)
 
-    def get_top(self, time_index, time, server_name):
+    def get_top(self, time_index, time):
         time_data = {}
         servers_total = 0
 
@@ -161,7 +160,7 @@ class WindowAlgorithmEventProcessor(EventProcessor):
             self.increase_set(ordered_data[0], self.server_list(server_name, time), now, server_name, time, time_index)
             self.cleanup_old_data(self.server_list(server_name, time), self.timespan_set(server_name, time), now-time*1000.0)
 
-            data[time] = self.get_top(time_index, time, server_name)
+            data[time] = self.get_top(time_index, time)
 
         item['data'] = data
         return (True,item)
@@ -181,13 +180,13 @@ class QueriesSummaryEventProcessor(WindowAlgorithmEventProcessor):
 
     def order_data(self,  item: Mapping[str, int]):
         total = 0
+
         for ip in item:
             queries = ip['queries']
             for type in queries:
                 total += len(queries[type])
 
         return [item, total]
-
 
     def increase_timespan(self, current_time, timestamp_set, item, total):
         for element in item:
@@ -211,14 +210,17 @@ class QueriesSummaryEventProcessor(WindowAlgorithmEventProcessor):
                         old_queries = old_queries[0:i]
                         break
                     else:
-                        total += len(query[0])
+                        for type in query[0]:
+                            total += len(query[0][type])
+
                 old_queries.insert(0, (queries_list, current_time))
 
                 self.redis.hset("summary:historic_{}_{}".format(server, time), ip, json.dumps(old_queries))
                 self.redis.zadd("summary:ip_size_{}_{}".format(server, time), total, ip)
             else:
                 new_queries = [(queries_list, current_time)]
-                total = len(queries_list)
+                for type in queries_list:
+                    total += len(queries_list[type])
 
                 self.redis.hset("summary:historic_{}_{}".format(server, time), ip, json.dumps(new_queries))
                 self.redis.zadd("summary:ip_size_{}_{}".format(server, time), total, ip)
@@ -238,12 +240,22 @@ class QueriesSummaryEventProcessor(WindowAlgorithmEventProcessor):
         for element in top_elements:
             ip = element[0].decode("utf-8")
             queries = json.loads(self.redis.hget("summary:historic_{}_{}".format(server, time), ip).decode("utf-8"))
-            top_list.append([ip, [x[0] for x in queries], element[1]])
+            top_list.append((ip, self.collapse_by_type(queries), element[1]))
 
         return top_list
 
     def format_data(self, l: list, total: int) -> list:
         return list(map(lambda x: (x[0], x[1], int(x[2]), (x[2]/total) if total > 0 else 0), l))
+
+    def collapse_by_type(self, queries):
+        queries_by_type = {}
+        for element in queries:
+            query = element[0]
+            for type in query:
+                queries_by_type.setdefault(type, [])
+                queries_by_type[type] = queries_by_type[type] + query[type]
+
+        return queries_by_type
 
 
 class TopCountEventProcessor(WindowAlgorithmEventProcessor):
