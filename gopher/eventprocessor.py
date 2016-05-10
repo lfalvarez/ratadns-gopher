@@ -90,7 +90,6 @@ class WindowAlgorithmEventProcessor(EventProcessor):
                 multi.zincrby(set, element[0]['name'], element[1])
 
         multi.execute()
-
         self.increase_total(set_list[len(set_list)-1], time_diff, server, time_index)
 
     def increase_total(self, total_set, time_diff, server, time_index):
@@ -182,6 +181,7 @@ class QueriesSummaryEventProcessor(WindowAlgorithmEventProcessor):
 
     def order_data(self,  item: Mapping[str, int]):
         total = 0
+
         for ip in item:
             queries = ip['queries']
             for type in queries:
