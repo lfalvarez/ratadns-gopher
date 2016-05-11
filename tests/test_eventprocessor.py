@@ -11,6 +11,13 @@ from unittest.mock import MagicMock, call
 from gopher.eventprocessor import EventConsumer, ServerDataEventProcessor, EventProcessor, TopCountEventProcessor
 
 
+class FakeStrictRedis2(fakeredis.FakeStrictRedis):
+    def pubsub(self, **kwargs):
+        ps = fakeredis.FakePubSub(**kwargs)
+        self._pubsubs.append(ps)
+
+        return ps
+
 class TestEventConsumer(unittest.TestCase):
     def test1(self):
         ec = EventConsumer()
@@ -122,7 +129,7 @@ class TestEventProcessor(unittest.TestCase):
 
 class TestTopCountEventProcessor(unittest.TestCase):
     def setUp(self):
-        self.r = fakeredis.FakeStrictRedis()
+        self.r = FakeStrictRedis2()
         self.global_config_mock = {
               "redis": {
                 "address": "200.7.6.140",
