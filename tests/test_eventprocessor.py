@@ -8,7 +8,8 @@ import json
 import fakeredis
 from unittest.mock import MagicMock, call
 
-from gopher.eventprocessor import EventConsumer, ServerDataEventProcessor, EventProcessor, TopCountEventProcessor
+from gopher.eventprocessor import EventConsumer, ServerDataEventProcessor, EventProcessor, TopCountEventProcessor, \
+    QueriesSummaryEventProcessor
 
 
 class FakeStrictRedis2(fakeredis.FakeStrictRedis):
@@ -155,8 +156,6 @@ class TestTopCountEventProcessor(unittest.TestCase):
     def get_time_now(self):
         return Time.mktime(datetime.datetime.now().timetuple()) * 1000.0
 
-
-
     def test_increment_set(self):
         now = self.get_time_now()
         redis_set_name = "SET"
@@ -210,3 +209,75 @@ class TestTopCountEventProcessor(unittest.TestCase):
         list = [(b"a", 10), (b"b", 15), (b"d", 9), (b"e", 13), (b"f", 7)]
         result = ep.format_data(list, 54)
         self.assertListEqual(result, [("a", 10, 10/54), ("b", 15, 15/54), ("d", 9, 9/54), ("e", 13, 13/54), ("f", 7, 7/54)])
+
+
+class TestQueriesSummaryEventProcessor(unittest.TestCase):
+    def setUp(self):
+        self.r = FakeStrictRedis2()
+        self.global_config_mock = {
+            "redis": {
+                "address": "200.7.6.140",
+                "port": 6379
+            },
+            "servers_info": [
+                {
+                    "name": "beaucheff"
+                },
+                {
+                    "name": "blanco"
+                }
+            ],
+            "summary": {
+                "times": [1, 5, 15]
+            }
+        }
+
+    def get_time_now(self):
+        return Time.mktime(datetime.datetime.now().timetuple()) * 1000.0
+
+    def test_order_data(self):
+        ep = QueriesSummaryEventProcessor(self.r, self.global_config_mock)
+        element_list = [{"ip": "a", "queries": {"1": ["a11", "a12", "a13"], "2": ["a21", "a22", "a23"]}},
+                        {"ip": "b", "queries": {"1": ["b11", "b12"], "2": ["b21", "b22", "b23", "b24"]}}]
+        (result, total) = ep.order_data(element_list)
+        self.assertEqual(result, element_list)
+        self.assertEqual(total, 12)
+
+
+    def test_increase_timespan(self):
+        ep = QueriesSummaryEventProcessor(self.r, self.global_config_mock)
+        redis_set_name = "SET3"
+        old_element_list = [("ip1", 9), ("ip2", 7), ("ip3", 13), ("ip4", 2)]
+        for element in old_element_list:
+            self.r.zincrby(redis_set_name, element[0], element[1])
+
+        new_element_list = [{"ip": "ip1"}, {"ip": "ip2"}, {"ip": "ip3"}]
+        ep.increase_timespan(30, [redis_set_name, "TOTAL1"], new_element_list, 0)
+
+        result = self.r.zrange(redis_set_name, 0, 3, withscores=True)
+        # self.assertDictEqual(dict(result), {b"ip1": 30, b"ip2": 30, b"ip3": 30, b"ip4": 2})
+
+    def test_increase_set(self):
+        ep = QueriesSummaryEventProcessor(self.r, self.global_config_mock)
+        server_name = "blanco" # TODO: change to retrieve server from config?
+        window_time = 14 # TODO: random number?
+
+        redis_set_name = "summary:historic_{}_{}".format(server_name, window_time)
+        old_element_list = [{"ip": "a", "queries": {"1": ["a11", "a12", "a13"], "2": ["a21", "a22", "a23"]}},
+                            {"ip": "b", "queries": {"1": ["b11", "b12"], "2": ["b21", "b22", "b23", "b24"]}}]
+        for element in old_element_list:
+            self.r.hset(redis_set_name, element["ip"], [(element["queries"], 5)])
+
+        new_element = [{"ip": "c", "queries": {"f": ["c11", "c12"], "g": ["c21", "c22", "c23"]}}]
+        ep.increase_set(new_element, redis_set_name, 7, server_name, window_time, 0)
+
+        result = self.r.hgetall(redis_set_name)
+
+        self.assertCountEqual(dict(result), {b"a": b"[({'1': ['a11', 'a12', 'a13'], '2': ['a21', 'a22', 'a23']}, 5)]",
+                                            b"b": b"[({'1': ['b11', 'b12'], '2': ['b21', 'b22', 'b23', 'b24']}, 5)]",
+                                            b"c": b'[[{"g": ["c21", "c22", "c23"], "f": ["c11", "c12"]}, 7]]'})
+
+        # TODO: case when ip is already in hash
+
+
+
