@@ -149,7 +149,8 @@ class TestTopCountEventProcessor(unittest.TestCase):
         return Time.mktime(datetime.datetime.now().timetuple()) * 1000.0
 
 
-    def test_increment_empty_set(self):
+
+    def test_increment_set(self):
         now = self.get_time_now()
         redis_set_name = "SET"
         elements_list = [({"name": "a"}, 1), ({"name": "b"}, 4), ({"name": "c"}, 2), ({"name": "d"}, 3), ({"name": "e"}, 5)]
@@ -160,15 +161,45 @@ class TestTopCountEventProcessor(unittest.TestCase):
 
         ep = TopCountEventProcessor(self.r, self.global_config_mock, self.class_config_mock)
         ep.increase_set(elements_list, [redis_set_name, "TOTAL"], now, server_name, window_time, index_time)
-        #results = self.r.zrange(redis_set_name, 0, -1)
-        # self.assertListEqual(results, ["a", "b", "c", "d", "e"])
 
         results = dict(self.r.zrange(redis_set_name, 0, 4, withscores=True))
         self.assertDictEqual(results, dict([(b"a", 1), (b"b", 4), (b"c", 2), (b"d", 3), (b"e", 5)]))
 
-        # self.r.pipeline().execute.assert_called_once_with()
-        # self.r.zrangebyscore.assert_called_once_with(redis_set_name, now - window_time * 1000, "inf")
-        # self.r.zremrangebyscore.assert_called_once_with(redis_set_name, "-inf", now - window_time * 1000)
+        elements_list = [({"name": "f"}, 2), ({"name": "b"}, 2)]
+        ep.increase_set(elements_list, [redis_set_name, "TOTAL"], now, server_name, window_time, index_time)
+        results = dict(self.r.zrange(redis_set_name, 0, 5, withscores=True))
+        self.assertDictEqual(results, {b"a": 1, b"b": 6, b"c": 2, b"d": 3, b"e": 5, b"f": 2})
 
-    def test_increment_value_already_on_set(self):
-        pass
+    def test_get_old_data(self):
+        now = self.get_time_now()
+        redis_set_name = "SET2"
+        elements_list = [({"name": "a"}, 10), ({"name": "b"}, 15), ({"name": "c"}, 5), ({"name": "d"}, 9), ({"name": "e"}, 13)]
+        server_name = "blanco" # TODO: change to retrieve server from config?
+        window_time = 60 # TODO: random number?
+        index_time = 1 # TODO: random number?
+
+        ep = TopCountEventProcessor(self.r, self.global_config_mock, self.class_config_mock)
+        ep.increase_set(elements_list, [redis_set_name, "TOTAL"], now, server_name, window_time, index_time)
+        results = ep.get_old_data(redis_set_name, 11)
+        self.assertListEqual(sorted(results), sorted([b"a", b"c", b"d"]))
+
+
+    def test_get_top_data(self):
+        now = self.get_time_now()
+        server_name = "blanco" # TODO: change to retrieve server from config?
+        window_time = 14 # TODO: random number?
+        redis_set_name = "topk:{}_{}".format(server_name, window_time)
+        elements_list = [({"name": "a"}, 10), ({"name": "b"}, 15), ({"name": "c"}, 5), ({"name": "d"}, 9), ({"name": "e"}, 13), ({"name": "f"}, 7)]
+        index_time = 1 # TODO: random number?
+
+        ep = TopCountEventProcessor(self.r, self.global_config_mock, self.class_config_mock)
+        ep.increase_set(elements_list, [redis_set_name, "TOTAL"], now, server_name, window_time, index_time)
+        results = ep.get_top_data(server_name, window_time)
+        self.assertDictEqual(dict(results), {b"a": 10, b"b": 15, b"d": 9, b"e": 13, b"f": 7})
+
+
+    def test_format_data(self):
+        ep = TopCountEventProcessor(self.r, self.global_config_mock, self.class_config_mock)
+        list = [(b"a", 10), (b"b", 15), (b"d", 9), (b"e", 13), (b"f", 7)]
+        result = ep.format_data(list, 54)
+        self.assertListEqual(result, [("a", 10, 10/54), ("b", 15, 15/54), ("d", 9, 9/54), ("e", 13, 13/54), ("f", 7, 7/54)])

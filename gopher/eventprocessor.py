@@ -283,12 +283,8 @@ class TopCountEventProcessor(WindowAlgorithmEventProcessor):
         return list(map(lambda x: (x[0].decode("utf-8"), int(x[1]), (x[1]/total) if total > 0 else 0), l))
 
     def get_old_data(self, historic_set, time_diff):
-        script = """local old_jsons = redis.call('zrangebyscore', KEYS[1], '-inf' , ARGV[1]);
-                        redis.call('zremrangebyscore', KEYS[1], '-inf', ARGV[1]) ;
-                        return old_jsons;"""
-
-        get_json = self.redis.register_script(script)
-        jsons = get_json(keys=[historic_set], args=[time_diff])
+        jsons = self.redis.zrangebyscore(historic_set, "-inf", time_diff)
+        self.redis.zremrangebyscore(historic_set, "-inf", time_diff)
 
         return jsons
 
