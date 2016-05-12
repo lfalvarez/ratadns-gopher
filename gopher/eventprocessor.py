@@ -102,6 +102,7 @@ class WindowAlgorithmEventProcessor(EventProcessor):
         self.total[server][time_index] = server_total
 
     def increase_timespan(self, current_time, timestamp_set, data, total):
+        #TODO: Fix bug: json.dumps is a string!
         self.redis.zadd(timestamp_set[0], current_time, json.dumps(data)[0])
         self.redis.zadd(timestamp_set[1], current_time, total)
 
@@ -194,6 +195,8 @@ class QueriesSummaryEventProcessor(WindowAlgorithmEventProcessor):
 
     def increase_set(self, element_list: Mapping[str, int], historic_set: list, current_time: int, server: str, time: int,
                      time_index: int):
+        # TODO: refactor names!
+        # TODO: add new_queries length to total
         time_diff = current_time - time*1000.0
         super().increase_total(historic_set[len(historic_set)-1], time_diff, server, time_index)
         for element in element_list:
@@ -234,6 +237,7 @@ class QueriesSummaryEventProcessor(WindowAlgorithmEventProcessor):
             self.redis.hdel(set_list[2], element)
 
     def get_top_data(self, server: str, time: int):
+        # TODO: refactor set names
         top_elements = self.redis.zrevrange("summary:ip_size_{}_{}".format(server, time), 0, 4, withscores=True)
         top_list = []
 
