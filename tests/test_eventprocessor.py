@@ -261,8 +261,10 @@ class TestQueriesSummaryEventProcessor(unittest.TestCase):
         ep = QueriesSummaryEventProcessor(self.r, self.global_config_mock)
         server_name = "blanco" # TODO: change to retrieve server from config?
         window_time = 14 # TODO: random number?
+        self.r.flushall()
 
         redis_set_name = "summary:historic_{}_{}".format(server_name, window_time)
+        redis_total_set_name = "summary:ip_size_{}_{}".format(server_name, window_time)
         old_element_list = [{"ip": "a", "queries": {"1": ["a11", "a12", "a13"], "2": ["a21", "a22", "a23"]}},
                             {"ip": "b", "queries": {"1": ["b11", "b12"], "2": ["b21", "b22", "b23", "b24"]}}]
         for element in old_element_list:
@@ -277,7 +279,90 @@ class TestQueriesSummaryEventProcessor(unittest.TestCase):
                                             b"b": b"[({'1': ['b11', 'b12'], '2': ['b21', 'b22', 'b23', 'b24']}, 5)]",
                                             b"c": b'[[{"g": ["c21", "c22", "c23"], "f": ["c11", "c12"]}, 7]]'})
 
-        # TODO: case when ip is already in hash
+        result_total = self.r.hgetall(redis_total_set_name)
+        self.assertDictEqual(result_total, {b"c": 5})
 
+        new_element = [{"ip": "c", "queries": {"f": ["c211", "c212"], "h": ["c221", "c222", "c223"]}}]
+        ep.increase_set(new_element, redis_set_name, 9, server_name, window_time, 0)
+        result = self.r.hgetall(redis_set_name)
 
+        self.assertCountEqual(dict(result), {b"a": b"[({'1': ['a11', 'a12', 'a13'], '2': ['a21', 'a22', 'a23']}, 5)]",
+                                             b"b": b"[({'1': ['b11', 'b12'], '2': ['b21', 'b22', 'b23', 'b24']}, 5)]",
+                                             b"c": b'[[{"f": ["c211", "c212"], "h": ["c221", "c222", "c223"]}, 9], '
+                                                   b'[{"g": ["c21", "c22", "c23"], "f": ["c11", "c12"]}, 7]]'})
+        result_total = self.r.hgetall(redis_total_set_name)
+        #self.assertDictEqual(result_total, {b"c": 10})
 
+    def test_cleanup_old_data(self):
+        ep = QueriesSummaryEventProcessor(self.r, self.global_config_mock)
+        server_name = "blanco"  # TODO: change to retrieve server from config?
+        window_time = 14  # TODO: random number?
+
+        redis_set_name = "summary:historic_{}_{}".format(server_name, window_time)
+        redis_total_set_name = "summary:ip_size_{}_{}".format(server_name, window_time)
+        redis_timestamp_set = "TIMESTAMP"
+        old_element_list = [{"ip": "a", "queries": {"1": ["a11", "a12", "a13"], "2": ["a21", "a22", "a23"]}},
+                            {"ip": "b", "queries": {"1": ["b11", "b12"], "2": ["b21", "b22", "b23", "b24"]}}]
+        ep.increase_set(old_element_list,redis_set_name, 3, server_name, window_time, 0)
+        new_element = [{"ip": "c", "queries": {"f": ["c11", "c12"], "g": ["c21", "c22", "c23"]}}]
+        ep.increase_set(new_element, redis_set_name, 7, server_name, window_time, 0)
+
+        timestamp_list = [("a", 3), ("b", 3), ("c", 7)]
+        for element in timestamp_list:
+            self.r.zincrby(redis_timestamp_set, element[0], element[1])
+
+        ep.cleanup_old_data([redis_total_set_name, redis_timestamp_set, redis_set_name], redis_timestamp_set, 6)
+
+        result_total = self.r.zrange(redis_total_set_name, 0, 2)
+        self.assertListEqual(result_total, [b"c"])
+
+        result_timestamp = self.r.zrange(redis_timestamp_set, 0, 2, withscores=True)
+        self.assertListEqual(result_timestamp, [(b"c", 7)])
+
+        result_hash = self.r.hgetall(redis_set_name)
+        self.assertCountEqual(result_hash, {b"c": b'[({"f": ["c11", "c12"], "g": ["c21", "c22", "c23"]}, 7)]'})
+
+    def test_get_top_data(self):
+        self.maxDiff = None
+        ep = QueriesSummaryEventProcessor(self.r, self.global_config_mock)
+        self.r.flushall()
+        server_name = "blanco" # TODO: change to retrieve server from config?
+        window_time = 14 # TODO: random number?
+        redis_set_name = "summary:historic_{}_{}".format(server_name, window_time)
+
+        old_element_list = [{"ip": "a", "queries": {"1": ["a11", "a12"], "2": ["a21", "a22", "a23"]}},
+                            {"ip": "b", "queries": {"1": ["b11", "b12", "b13"]}}, {"ip": "c", "queries": {"1": ["c11"]}},
+                            {"ip": "d", "queries": {"1": ["d11", "d12"]}}, {"ip": "f", "queries": {"1": ["f11", "f12"]}},
+                            {"ip": "e", "queries": {"1": ["e11", "e12"]}}]
+        ep.increase_set(old_element_list, redis_set_name, 7, server_name, window_time, 0)
+
+        result = ep.get_top_data(server_name, window_time)
+        self.assertCountEqual(result, [("a", {"1": ["a11", "a12"], "2": ["a21", "a22", "a23"]}, 5.0),
+                                       ("b", {"1": ["b11", "b12", "b13"]}, 3.0),
+                                       ("d", {"1": ["d11", "d12"]}, 2.0),
+                                       ("e", {"1": ["e11", "e12"]}, 2.0),
+                                       ("f", {"1": ["f11", "f12"]}, 2.0)])
+
+    def test_format_data(self):
+        ep = QueriesSummaryEventProcessor(self.r, self.global_config_mock)
+        list = [(b"b", b"{'1': ['b11', 'b12', 'b13', 'b14'], '2': ['b21', 'b22', 'b23', 'b24']}", 8),
+                (b"a", b"{'1': ['a11', 'a12', 'a13'], '2': ['a21', 'a22', 'a23']}", 6),
+                (b"d", b"{'1': ['c11', 'c12', 'c13'], '2': ['c21']}", 4),
+                (b"e", b"{'2': ['e11', 'e12', 'e13']}", 3),
+                (b"f", b"{'3': ['f11', 'f12']}", 2)]
+        result = ep.format_data(list, 23)
+        self.assertListEqual(result, [(b"b", b"{'1': ['b11', 'b12', 'b13', 'b14'], '2': ['b21', 'b22', 'b23', 'b24']}", 8, 8/23),
+                                      (b"a", b"{'1': ['a11', 'a12', 'a13'], '2': ['a21', 'a22', 'a23']}", 6, 6/23),
+                                      (b"d", b"{'1': ['c11', 'c12', 'c13'], '2': ['c21']}", 4, 4/23),
+                                      (b"e", b"{'2': ['e11', 'e12', 'e13']}", 3, 3/23),
+                                      (b"f", b"{'3': ['f11', 'f12']}", 2, 2/23)])
+
+    def test_collapse_by_type(self):
+        ep = QueriesSummaryEventProcessor(self.r, self.global_config_mock)
+        list = [({'1': ['b11', 'b12', 'b13', 'b14'], '2': ['b21', 'b22', 'b23', 'b24']}, 10),
+                ({'1': ['a11', 'a12', 'a13'], '2': ['a21', 'a22', 'a23']}, 9),
+                ({'1': ['c11', 'c12', 'c13'], '2': ['c21']}, 4),
+                ({'2': ['e11', 'e12', 'e13']}, 3)]
+        result = ep.collapse_by_type(list)
+        self.assertCountEqual(result, {'1': ['b11', 'b12', 'b13', 'b14','a11', 'a12', 'a13', 'c11', 'c12', 'c13'],
+                                      '2': ['a21', 'a22', 'a23', 'b21', 'b22', 'b23', 'b24', 'c21', 'e11', 'e12', 'e13']})

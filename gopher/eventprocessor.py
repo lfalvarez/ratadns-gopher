@@ -196,6 +196,7 @@ class QueriesSummaryEventProcessor(WindowAlgorithmEventProcessor):
     def increase_set(self, element_list: Mapping[str, int], historic_set: list, current_time: int, server: str, time: int,
                      time_index: int):
         # TODO: refactor names!
+        # TODO: add new_queries length to total
         time_diff = current_time - time*1000.0
         super().increase_total(historic_set[len(historic_set)-1], time_diff, server, time_index)
         for element in element_list:
@@ -236,6 +237,7 @@ class QueriesSummaryEventProcessor(WindowAlgorithmEventProcessor):
             self.redis.hdel(set_list[2], element)
 
     def get_top_data(self, server: str, time: int):
+        # TODO: refactor set names
         top_elements = self.redis.zrevrange("summary:ip_size_{}_{}".format(server, time), 0, 4, withscores=True)
         top_list = []
 
