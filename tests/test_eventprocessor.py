@@ -4,7 +4,6 @@ import redis
 import redis.client
 import unittest
 import time as Time
-import json
 import fakeredis
 from unittest.mock import MagicMock, call
 
@@ -18,6 +17,7 @@ class FakeStrictRedis2(fakeredis.FakeStrictRedis):
         self._pubsubs.append(ps)
 
         return ps
+
 
 class TestEventConsumer(unittest.TestCase):
     def test1(self):
@@ -64,7 +64,7 @@ class TestEventProcessor(unittest.TestCase):
 
         # Fourth we set the consumers to be registered
         self.consumer1_mock = MagicMock(spec=EventConsumer)  # consumer that will register
-        self.consumer2_mock = MagicMock(spec=EventConsumer)  # consumer that will register and then unregister
+        self.consumer2_mock = MagicMock(spec=EventConsumer)  # consumer that will register and then deregister
 
     def test_calls_to_redis_methods(self):
         """
@@ -119,7 +119,7 @@ class TestEventProcessor(unittest.TestCase):
         self.consumer2_mock.consume.assert_called_once_with(self.data_to_consume)
 
         ep.process.side_effect = self.process_side_effects
-        ep.unregister_consumer(self.consumer2_mock)
+        ep.deregister_consumer(self.consumer2_mock)
         ep.run()
 
         # As we only unregistered consumer2_mock, consumer1_mock should have been called again
@@ -153,16 +153,17 @@ class TestTopCountEventProcessor(unittest.TestCase):
             }
         self.class_config_mock = {"channel": "topk", "redis_set": "topk"}
 
-    def get_time_now(self):
+    @staticmethod
+    def get_time_now():
         return Time.mktime(datetime.datetime.now().timetuple()) * 1000.0
 
     def test_increment_set(self):
         now = self.get_time_now()
         redis_set_name = "SET"
         elements_list = [({"name": "a"}, 1), ({"name": "b"}, 4), ({"name": "c"}, 2), ({"name": "d"}, 3), ({"name": "e"}, 5)]
-        server_name = "blanco" # TODO: change to retrieve server from config?
-        window_time = 60 # TODO: random number?
-        index_time = 1 # TODO: random number?
+        server_name = "blanco"  # TODO: change to retrieve server from config?
+        window_time = 60  # TODO: random number?
+        index_time = 1  # TODO: random number?
         # TODO: test elements_list with repeated elements
 
         ep = TopCountEventProcessor(self.r, self.global_config_mock, self.class_config_mock)
@@ -180,29 +181,27 @@ class TestTopCountEventProcessor(unittest.TestCase):
         now = self.get_time_now()
         redis_set_name = "SET2"
         elements_list = [({"name": "a"}, 10), ({"name": "b"}, 15), ({"name": "c"}, 5), ({"name": "d"}, 9), ({"name": "e"}, 13)]
-        server_name = "blanco" # TODO: change to retrieve server from config?
-        window_time = 60 # TODO: random number?
-        index_time = 1 # TODO: random number?
+        server_name = "blanco"  # TODO: change to retrieve server from config?
+        window_time = 60  # TODO: random number?
+        index_time = 1  # TODO: random number?
 
         ep = TopCountEventProcessor(self.r, self.global_config_mock, self.class_config_mock)
         ep.increase_set(elements_list, [redis_set_name, "TOTAL"], now, server_name, window_time, index_time)
         results = ep.get_old_data(redis_set_name, 11)
         self.assertListEqual(sorted(results), sorted([b"a", b"c", b"d"]))
 
-
     def test_get_top_data(self):
         now = self.get_time_now()
-        server_name = "blanco" # TODO: change to retrieve server from config?
-        window_time = 14 # TODO: random number?
+        server_name = "blanco"  # TODO: change to retrieve server from config?
+        window_time = 14  # TODO: random number?
         redis_set_name = "topk:{}_{}".format(server_name, window_time)
         elements_list = [({"name": "a"}, 10), ({"name": "b"}, 15), ({"name": "c"}, 5), ({"name": "d"}, 9), ({"name": "e"}, 13), ({"name": "f"}, 7)]
-        index_time = 1 # TODO: random number?
+        index_time = 1  # TODO: random number?
 
         ep = TopCountEventProcessor(self.r, self.global_config_mock, self.class_config_mock)
         ep.increase_set(elements_list, [redis_set_name, "TOTAL"], now, server_name, window_time, index_time)
         results = ep.get_top_data(server_name, window_time)
         self.assertDictEqual(dict(results), {b"a": 10, b"b": 15, b"d": 9, b"e": 13, b"f": 7})
-
 
     def test_format_data(self):
         ep = TopCountEventProcessor(self.r, self.global_config_mock, self.class_config_mock)
@@ -232,7 +231,8 @@ class TestQueriesSummaryEventProcessor(unittest.TestCase):
             }
         }
 
-    def get_time_now(self):
+    @staticmethod
+    def get_time_now():
         return Time.mktime(datetime.datetime.now().timetuple()) * 1000.0
 
     def test_order_data(self):
@@ -242,7 +242,6 @@ class TestQueriesSummaryEventProcessor(unittest.TestCase):
         (result, total) = ep.order_data(element_list)
         self.assertEqual(result, element_list)
         self.assertEqual(total, 12)
-
 
     def test_increase_timespan(self):
         ep = QueriesSummaryEventProcessor(self.r, self.global_config_mock)
@@ -255,12 +254,13 @@ class TestQueriesSummaryEventProcessor(unittest.TestCase):
         ep.increase_timespan(30, [redis_set_name, "TOTAL1"], new_element_list, 0)
 
         result = self.r.zrange(redis_set_name, 0, 3, withscores=True)
+        # TODO: Fix this method (increase_timespan)
         # self.assertDictEqual(dict(result), {b"ip1": 30, b"ip2": 30, b"ip3": 30, b"ip4": 2})
 
     def test_increase_set(self):
         ep = QueriesSummaryEventProcessor(self.r, self.global_config_mock)
-        server_name = "blanco" # TODO: change to retrieve server from config?
-        window_time = 14 # TODO: random number?
+        server_name = "blanco"  # TODO: change to retrieve server from config?
+        window_time = 14  # TODO: random number?
         self.r.flushall()
 
         redis_set_name = "summary:historic_{}_{}".format(server_name, window_time)
@@ -276,8 +276,8 @@ class TestQueriesSummaryEventProcessor(unittest.TestCase):
         result = self.r.hgetall(redis_set_name)
 
         self.assertCountEqual(dict(result), {b"a": b"[({'1': ['a11', 'a12', 'a13'], '2': ['a21', 'a22', 'a23']}, 5)]",
-                                            b"b": b"[({'1': ['b11', 'b12'], '2': ['b21', 'b22', 'b23', 'b24']}, 5)]",
-                                            b"c": b'[[{"g": ["c21", "c22", "c23"], "f": ["c11", "c12"]}, 7]]'})
+                                             b"b": b"[({'1': ['b11', 'b12'], '2': ['b21', 'b22', 'b23', 'b24']}, 5)]",
+                                             b"c": b'[[{"g": ["c21", "c22", "c23"], "f": ["c11", "c12"]}, 7]]'})
 
         result_total = self.r.hgetall(redis_total_set_name)
         self.assertDictEqual(result_total, {b"c": 5})
@@ -291,7 +291,8 @@ class TestQueriesSummaryEventProcessor(unittest.TestCase):
                                              b"c": b'[[{"f": ["c211", "c212"], "h": ["c221", "c222", "c223"]}, 9], '
                                                    b'[{"g": ["c21", "c22", "c23"], "f": ["c11", "c12"]}, 7]]'})
         result_total = self.r.hgetall(redis_total_set_name)
-        #self.assertDictEqual(result_total, {b"c": 10})
+        # TODO: Fix this method (increase_set)
+        # self.assertDictEqual(result_total, {b"c": 10})
 
     def test_cleanup_old_data(self):
         ep = QueriesSummaryEventProcessor(self.r, self.global_config_mock)
@@ -326,8 +327,8 @@ class TestQueriesSummaryEventProcessor(unittest.TestCase):
         self.maxDiff = None
         ep = QueriesSummaryEventProcessor(self.r, self.global_config_mock)
         self.r.flushall()
-        server_name = "blanco" # TODO: change to retrieve server from config?
-        window_time = 14 # TODO: random number?
+        server_name = "blanco"  # TODO: change to retrieve server from config?
+        window_time = 14  # TODO: random number?
         redis_set_name = "summary:historic_{}_{}".format(server_name, window_time)
 
         old_element_list = [{"ip": "a", "queries": {"1": ["a11", "a12"], "2": ["a21", "a22", "a23"]}},
@@ -365,4 +366,4 @@ class TestQueriesSummaryEventProcessor(unittest.TestCase):
                 ({'2': ['e11', 'e12', 'e13']}, 3)]
         result = ep.collapse_by_type(list)
         self.assertCountEqual(result, {'1': ['b11', 'b12', 'b13', 'b14','a11', 'a12', 'a13', 'c11', 'c12', 'c13'],
-                                      '2': ['a21', 'a22', 'a23', 'b21', 'b22', 'b23', 'b24', 'c21', 'e11', 'e12', 'e13']})
+                                       '2': ['a21', 'a22', 'a23', 'b21', 'b22', 'b23', 'b24', 'c21', 'e11', 'e12', 'e13']})

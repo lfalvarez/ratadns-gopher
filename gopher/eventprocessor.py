@@ -5,13 +5,14 @@ import redis
 import threading
 import json
 
-import socket
-import struct
 import datetime
 import time as Time
 
 
 class EventConsumer(object):
+    """
+    # What's the objective of this class?
+    """
     def __init__(self):
         self.queue = queue.Queue()
 
@@ -23,8 +24,10 @@ class EventConsumer(object):
 
 
 class EventProcessor(threading.Thread):
-    """One event processor for each URL"""
-
+    """
+    One event processor for each URL
+    # What's the objective of this class?
+    """
     def __init__(self, r: redis.StrictRedis):
         threading.Thread.__init__(self)
         self.pubsub = r.pubsub(ignore_subscribe_messages=True)
@@ -33,7 +36,7 @@ class EventProcessor(threading.Thread):
     def register_consumer(self, event_consumer: EventConsumer):
         self.consumers.append(event_consumer)
 
-    def unregister_consumer(self, event_consumer: EventConsumer):
+    def deregister_consumer(self, event_consumer: EventConsumer):
         self.consumers.remove(event_consumer)
 
     def subscribe(self, channel: str):
@@ -52,18 +55,23 @@ class EventProcessor(threading.Thread):
 
 
 class ServerDataEventProcessor(EventProcessor):
+    """
+    # What's the objective of this class?
+    """
     def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
         super().__init__(r)
         self.subscribe("QueriesPerSecond")
         self.subscribe("AnswersPerSecond")
 
     def process(self, item):
-        return (True, item)
+        return True, item
 
 
 class WindowAlgorithmEventProcessor(EventProcessor):
-    """Abstract representation of algorithm that accumulates data on a certain timespan and erases it as the time goes
-    on (basically, a time window)"""
+    """
+    Abstract representation of the algorithm that accumulates data on a certain period of time (timespan)
+    and delete part of them as the time goes on (basically, a time window)
+    """
     def __init__(self, name: str, r: redis.StrictRedis, config: Mapping[str, Any]):
         super().__init__(r)
         self.config = config
@@ -73,29 +81,50 @@ class WindowAlgorithmEventProcessor(EventProcessor):
 
         n = len(self.config[self.name]['times'])
         for server in self.config['servers_info']:
-            self.total[server['name']] = [0]*n
+            self.total[server['name']] = [0] * n  # What does here? What's the purpose?
 
-    def order_data(self,  item: Mapping[str, int]) -> list:
-        pass
+    def process(self, item: Mapping[str, Any]) -> Tuple[bool, Any]:  # What means each parameter?
+        """
+        Receives a json with data and accumulates it on a time window
+        """
+        data = {}
+        ordered_data = self.order_data(item['data'])
+        server_name = item['serverId']
+        now = Time.mktime(datetime.datetime.now().timetuple()) * 1000.0
 
-    def timespan_set(self, server, time):
-        pass
+        for time_index in range(0, len(self.config[self.name]['times'])):
+            time = self.config[self.name]['times'][time_index] * 60
+
+            self.increase_timespan(now, self.timespan_set(server_name, time), ordered_data[0], ordered_data[1])
+
+            self.increase_set(ordered_data[0], self.server_list(server_name, time), now, server_name, time, time_index)
+            self.cleanup_old_data(self.server_list(server_name, time), self.timespan_set(server_name, time),
+                                  now - time * 1000.0)
+
+            data[time] = self.get_top(time_index, time)
+
+        item['data'] = data
+        return True, item
 
     def increase_set(self, element_list: Mapping[str, int], set_list: list, current_time: int, server: str, time: int,
-                     time_index: int):
-        """Takes a list of elements and updates all relevant redis sets with this values"""
-        time_diff = current_time - time*1000.0
+                     time_index: int):  # What means each parameter?
+        """
+        Takes a list of elements and updates all relevant redis sets with this values
+        """
+        time_diff = current_time - time * 1000.0  # What means time*1000?
         multi = self.redis.pipeline()
 
         for element in element_list:
             for set in set_list:
-                multi.zincrby(set, element[0]['name'], element[1])
+                multi.zincrby(set, element[0]['name'], element[1])  # Add all elements in all sets?
 
         multi.execute()
-        self.increase_total(set_list[len(set_list)-1], time_diff, server, time_index)
+        self.increase_total(set_list[len(set_list) - 1], time_diff, server, time_index)
 
-    def increase_total(self, total_set, time_diff, server, time_index):
-        """Takes the total number of elements received in this json and inserts that value the total redis set"""
+    def increase_total(self, total_set, time_diff, server, time_index):  # What means each parameter?
+        """
+        Takes the total number of elements received in this json and inserts that value the total redis set
+        """
         server_total = 0
         total_res = self.redis.zrangebyscore(total_set, time_diff, "inf")
 
@@ -105,34 +134,32 @@ class WindowAlgorithmEventProcessor(EventProcessor):
         self.redis.zremrangebyscore(total_set, "-inf", time_diff)
         self.total[server][time_index] = server_total
 
-    def increase_timespan(self, current_time, timestamp_set, data, total):
-        """Takes some data and saves it in a redis set, with current time (in milis) as score"""
-        #TODO: Fix bug: json.dumps is a string!
+    def increase_timespan(self, current_time, timestamp_set, data, total):  # What means each parameter?
+        """
+        Takes some data and saves it in a redis set, with current time (in millis) as score
+        """
+        # TODO: Fix bug: json.dumps is a string!
         self.redis.zadd(timestamp_set[0], current_time, json.dumps(data)[0])
         self.redis.zadd(timestamp_set[1], current_time, total)
 
-    def get_top(self, time_index, time):
-        """Get top values in this window of time and formats it to be sent to front end, then returns it as a dictionary"""
+    def get_top(self, time_index, time):  # What means each parameter?
+        """
+        Get top values in this window of time and formats it to be sent, then returns it as a dictionary
+        """
         time_data = {}
         servers_total = 0
 
         for server in self.config['servers_info']:
             servers_total += self.total[server['name']][time_index]
-            time_data[server['name']] = self.format_data(self.get_top_data(server['name'], time), self.total[server['name']][time_index])
+            time_data[server['name']] = self.format_data(self.get_top_data(server['name'], time),
+                                                         self.total[server['name']][time_index])
 
         return time_data
 
-    def format_data(self):
-        pass
-
-    def server_list(self, server: str, time: int) -> list:
-        pass
-
-    def get_top_data(self, server: str, time: int):
-        pass
-
-    def cleanup_old_data(self, set_list, timespan_set, time_diff):
-        """Erases from redis all data that is outside the time window, updating information as necessary"""
+    def cleanup_old_data(self, set_list, timespan_set, time_diff):  # What means each parameter?
+        """
+        Deletes from redis all data that is outside the time window, updating information as necessary
+        """
         multi = self.redis.pipeline()
         old_data = self.get_old_data(timespan_set, time_diff)
 
@@ -148,74 +175,49 @@ class WindowAlgorithmEventProcessor(EventProcessor):
 
         multi.execute()
 
+    def order_data(self, item: Mapping[str, int]) -> list:
+        pass
+
+    def timespan_set(self, server, time):
+        pass
+
+    def format_data(self):
+        pass
+
+    def server_list(self, server: str, time: int) -> list:
+        pass
+
+    def get_top_data(self, server: str, time: int):
+        pass
+
     def get_old_data(self, historic_set, time_diff):
         pass
 
     def parse_old_data(self, old_data):
         pass
 
-    def process(self, item: Mapping[str, Any]) -> Tuple[bool, Any]:
-        """Receives a json with data and accumulates it on a time window"""
-        data = {}
-        ordered_data = self.order_data(item['data'])
-        server_name = item['serverId']
-        now = Time.mktime(datetime.datetime.now().timetuple()) * 1000.0
-
-        for time_index in range(0, len(self.config[self.name]['times'])):
-            time = self.config[self.name]['times'][time_index]*60
-
-            self.increase_timespan(now, self.timespan_set(server_name, time), ordered_data[0], ordered_data[1])
-
-            self.increase_set(ordered_data[0], self.server_list(server_name, time), now, server_name, time, time_index)
-            self.cleanup_old_data(self.server_list(server_name, time), self.timespan_set(server_name, time), now-time*1000.0)
-
-            data[time] = self.get_top(time_index, time)
-
-        item['data'] = data
-        return (True,item)
-
 
 class QueriesSummaryEventProcessor(WindowAlgorithmEventProcessor):
-    """Receives queries summary information and processes it using the time window algorithm"""
+    """
+    Receives queries summary information and processes it using the time window algorithm
+    """
     def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
         super().__init__('summary', r, config)
         self.subscribe("QueriesSummary")
 
-    def server_list(self, server: str, time: int):
-        """Redis set names list associated to this type of information"""
-        return ["summary:ip_{}_{}".format(server, time), "summary:ip_size_{}_{}".format(server, time),
-                "summary:historic_{}_{}".format(server, time), self.name + ":total_{}_{}".format(server, time)]
-
-    def timespan_set(self, server, time):
-        """Redis set names associated to timestamp (so that old information can be erased accordingly)"""
-        return ["summary:ip_{}_{}".format(server, time), "summary:total_{}_{}".format(server, time)]
-
-    def order_data(self,  item: Mapping[str, int]):
-        """Takes the information received and calculates the total number of queries that the summary represents"""
-        total = 0
-
-        for ip in item:
-            queries = ip['queries']
-            for type in queries:
-                total += len(queries[type])
-
-        return [item, total]
-
-    def increase_timespan(self, current_time, timestamp_set, item, total):
-        """For every sender ip, saves the queries data and current time"""
-        for element in item:
-            super().increase_timespan(current_time, timestamp_set, element['ip'], total)
-
-    def increase_set(self, element_list: Mapping[str, int], historic_set: list, current_time: int, server: str, time: int,
-                     time_index: int):
-        """Takes the queries summary information received and saves every (queries, timestamp) pair in relation to their
-         ip. If the ip is already in the set, first all queries outside the window are erased (since they are ordered
-         in decreasing timestamp order, all queries after the first outside the window will be outside also) and then
-         the new pair is inserted in first place"""
+    def increase_set(self, element_list: Mapping[str, int], historic_set: list, current_time: int, server: str,
+                     time: int,
+                     time_index: int):  # What means each parameter?
+        """
+        Takes the queries summary information received and saves every (queries, timestamp) pair in relation to their
+        ip. If the ip is already in the set, first all queries outside the window are erased (since they are ordered
+        in decreasing timestamp order, all queries after the first outside the window will be outside also) and then
+        the new pair is inserted in first place
+        """
         # TODO: refactor names!
         # TODO: add new_queries length to total
-        time_diff = current_time - time*1000.0
-        super().increase_total(historic_set[len(historic_set)-1], time_diff, server, time_index)
+        time_diff = current_time - time * 1000.0
+        super().increase_total(historic_set[len(historic_set) - 1], time_diff, server, time_index)
         for element in element_list:
             ip = element['ip']
             queries_list = element['queries']
@@ -245,18 +247,18 @@ class QueriesSummaryEventProcessor(WindowAlgorithmEventProcessor):
                 self.redis.hset("summary:historic_{}_{}".format(server, time), ip, json.dumps(new_queries))
                 self.redis.zadd("summary:ip_size_{}_{}".format(server, time), total, ip)
 
-    def cleanup_old_data(self, set_list, timespan_set, time_diff):
-        """Gets all ips outside the time window and erases them from all sets"""
-        old_elements = self.redis.zrangebyscore(timespan_set, "-inf", time_diff)
+    def increase_timespan(self, current_time, timestamp_set, item, total):  # What means each parameter?
+        """
+        For every sender ip, saves the queries data and current time
+        """
+        for element in item:
+            super().increase_timespan(current_time, timestamp_set, element['ip'], total)
 
-        for element in old_elements:
-            self.redis.zrem(set_list[0], element)
-            self.redis.zrem(set_list[1], element)
-            self.redis.hdel(set_list[2], element)
-
-    def get_top_data(self, server: str, time: int):
-        """Gets ips with more queries in this time window, obtains related information from redis, formats data and
-        returns it"""
+    def get_top_data(self, server: str, time: int):  # What means each parameter?
+        """
+        Gets ips with more queries in this time window, obtains related information from redis, formats data and
+        returns it
+        """
         # TODO: refactor set names
         top_elements = self.redis.zrevrange("summary:ip_size_{}_{}".format(server, time), 0, 4, withscores=True)
         top_list = []
@@ -268,13 +270,55 @@ class QueriesSummaryEventProcessor(WindowAlgorithmEventProcessor):
 
         return top_list
 
-    def format_data(self, l: list, total: int) -> list:
-        """Takes the list containing top information, and each pair is converted to a tuple containing: ip, queries,
-        total number of queries and percentage of queries respect all queries in the window"""
-        return list(map(lambda x: (x[0], x[1], int(x[2]), (x[2]/total) if total > 0 else 0), l))
+    def cleanup_old_data(self, set_list, timespan_set, time_diff):  # What means each parameter?
+        """
+        Gets all ips outside the time window and erases them from all sets
+        """
+        old_elements = self.redis.zrangebyscore(timespan_set, "-inf", time_diff)
 
-    def collapse_by_type(self, queries):
-        """Takes a list of queries, timestamp pairs and returns a new dictionary with queries grouped by type"""
+        for element in old_elements:
+            self.redis.zrem(set_list[0], element)
+            self.redis.zrem(set_list[1], element)
+            self.redis.hdel(set_list[2], element)
+
+    def order_data(self, item: Mapping[str, int]):  # What means each parameter?
+        """
+        Takes the information received and calculates the total number of queries that the summary represents
+        """
+        total = 0
+
+        for ip in item:
+            queries = ip['queries']
+            for type in queries:
+                total += len(queries[type])
+
+        return [item, total]
+
+    def timespan_set(self, server, time):  # What means each parameter?
+        """
+        Redis set names associated to timestamp (so that old information can be erased accordingly)
+        """
+        return ["summary:ip_{}_{}".format(server, time), "summary:total_{}_{}".format(server, time)]
+
+    def format_data(self, l: list, total: int) -> list:  # What means each parameter?
+        """
+        Takes the list containing top information, and each pair is converted to a tuple containing:
+        (ip, queries, total number of queries, percentage of queries respect all queries in the window)
+        """
+        return list(map(lambda x: (x[0], x[1], int(x[2]), (x[2] / total) if total > 0 else 0), l))
+
+    def server_list(self, server: str, time: int):  # What means each parameter?
+        """
+        Redis set names list associated to this type of information
+        """
+        return ["summary:ip_{}_{}".format(server, time), "summary:ip_size_{}_{}".format(server, time),
+                "summary:historic_{}_{}".format(server, time), self.name + ":total_{}_{}".format(server, time)]
+
+    @staticmethod
+    def collapse_by_type(queries):  # What means each parameter?
+        """
+        Takes a list of queries, timestamp pairs and returns a new dictionary with queries grouped by type
+        """
         queries_by_type = {}
         for element in queries:
             query = element[0]
@@ -286,61 +330,86 @@ class QueriesSummaryEventProcessor(WindowAlgorithmEventProcessor):
 
 
 class TopCountEventProcessor(WindowAlgorithmEventProcessor):
+    """
+    # What's the objective of this class?
+    """
     def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any], config_data: Mapping[str, Any]):
         super().__init__(config_data['redis_set'], r, config)
         self.subscribe(config_data['channel'])
         self.redis = r
         self.name = config_data['redis_set']
 
-    def timespan_set(self, server, time):
-        """Redis set names associated to timestamp (so that old information can be erased accordingly)"""
-        return [self.name + ":historic_jsons_{}_{}".format(server, time), self.name + ":total_{}_{}".format(server, time)]
-
     def increase_set(self, element_list: Mapping[str, int], set_list: list, current_time: int, server: str, time: int,
-                     time_index: int):
-        """Takes a list of elements and updates all relevant redis sets with this values"""
+                     time_index: int):  # What means each parameter?
+        """
+        Takes a list of elements and updates all relevant redis sets with this values
+        """
         super().increase_set(element_list, set_list[:len(set_list)], current_time, server, time, time_index)
 
-    def server_list(self, server: str, time: int):
-        """Redis set names list associated to this type of information"""
+    def get_top_data(self, server, time):  # What means each parameter?
+        """
+        Returns the names with higher score in this time window
+        """
+        return self.redis.zrevrange(self.redis_server_set(server, time), 0, 4, withscores=True)
+
+    def order_data(self, item: Mapping[str, int]):  # What means each parameter?
+        pass
+
+    def timespan_set(self, server, time):  # What means each parameter?
+        """
+        Redis set names associated to timestamp (so that old information can be erased accordingly)
+        """
+        return [self.name + ":historic_jsons_{}_{}".format(server, time),
+                self.name + ":total_{}_{}".format(server, time)]
+
+    def format_data(self, l: list, total: int) -> list:  # What means each parameter?
+        """
+        Takes the list containing top information, and each pair is converted to a tuple containing:
+        (name, total number of queries, percentage of queries respect all queries in the window)
+        """
+        return list(map(lambda x: (x[0].decode("utf-8"), int(x[1]), (x[1] / total) if total > 0 else 0), l))
+
+    def server_list(self, server: str, time: int):  # What means each parameter?
+        """
+        Redis set names list associated to this type of information
+        """
         return [self.name + ":{}_{}".format(server, time), self.name + ":global_{}".format(time),
                 self.name + ":total_{}_{}".format(server, time)]
 
-    def order_data(self,  item: Mapping[str, int]):
-        pass
-
-    def format_data(self, l: list, total: int) -> list:
-        """Takes the list containing top information, and each pair is converted to a tuple containing: name,
-        total number of queries and percentage of queries respect all queries in the window"""
-        return list(map(lambda x: (x[0].decode("utf-8"), int(x[1]), (x[1]/total) if total > 0 else 0), l))
-
-    def get_old_data(self, historic_set, time_diff):
-        """Returns data outside the time window and remove it from the set"""
+    def get_old_data(self, historic_set, time_diff):  # What means each parameter?
+        """
+        Returns data outside the time window and remove it from the set
+        """
         jsons = self.redis.zrangebyscore(historic_set, "-inf", time_diff)
         self.redis.zremrangebyscore(historic_set, "-inf", time_diff)
 
         return jsons
 
-    def parse_old_data(self, old_data):
-        """Parses data to json in utf-8 encoding"""
+    def parse_old_data(self, old_data):  # What means each parameter?
+        """
+        Parses data to json in utf-8 encoding
+        """
         return json.loads(old_data.decode("utf-8"))
 
-    def get_top_data(self, server, time):
-        """Returns the names with higher score in this time window"""
-        return self.redis.zrevrange(self.redis_server_set(server, time), 0, 4, withscores=True)
-
-    def redis_server_set(self, server, time):
-        """Retuns the redis set name that keeps queries count"""
+    def redis_server_set(self, server, time):  # What means each parameter?
+        """
+        Returns the redis set name that keeps queries count
+        """
         return self.name + ":{}_{}".format(server, time)
 
 
 class TopKEventProcessor(TopCountEventProcessor):
+    """
+    # What's the objective of this class?
+    """
     def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
         topk_data = {'channel': "topk", "redis_set": "topk"}
         super().__init__(r, config, topk_data)
 
-    def order_data(self, item: Mapping[str, int]) -> list:
-        """Receives a list of queries, orders the list and calculates how many queries are in the list"""
+    def order_data(self, item: Mapping[str, int]) -> list:  # What means each parameter?
+        """
+        Receives a list of queries, orders the list and calculates how many queries are in the list
+        """
         ordered_data = []
         total = 0
 
@@ -353,12 +422,17 @@ class TopKEventProcessor(TopCountEventProcessor):
 
 
 class MalformedPacketsEventProcessor(TopCountEventProcessor):
+    """
+    # What's the objective of this class?
+    """
     def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
         malformed_data = {'channel': "QueriesWithUnderscoredName", "redis_set": "malformed"}
         super().__init__(r, config, malformed_data)
 
-    def order_data(self,  item: Mapping[str, int]):
-        """Receives a list of malformed queries, orders the list and calculates how many queries are in the list"""
+    def order_data(self, item: Mapping[str, int]):  # What means each parameter?
+        """
+        Receives a list of malformed queries, orders the list and calculates how many queries are in the list
+        """
         ordered_data = {}
 
         for name_counter in item:
@@ -372,12 +446,3 @@ class MalformedPacketsEventProcessor(TopCountEventProcessor):
         data_list = sorted(data_list, key=lambda x: x[1])
 
         return [data_list, len(item)]
-
-
-
-
-
-
-
-
-
