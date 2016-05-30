@@ -30,8 +30,7 @@
   "active_event_processors": [
     "server_data",
     "queries_summary",
-    "topk",
-    "malformed"
+    "topk"
   ],
   "topk": {
     "times": [1, 5, 15]

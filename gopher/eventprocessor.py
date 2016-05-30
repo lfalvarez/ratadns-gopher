@@ -100,7 +100,7 @@ class WindowAlgorithmEventProcessor(EventProcessor):
         total_res = self.redis.zrangebyscore(total_set, time_diff, "inf")
 
         for i in range(0, len(total_res)):
-            server_total += int(total_res[i])
+            server_total += float(total_res[i])
 
         self.redis.zremrangebyscore(total_set, "-inf", time_diff)
         self.total[server][time_index] = server_total
