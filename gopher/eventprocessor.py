@@ -66,6 +66,30 @@ class ServerDataEventProcessor(EventProcessor):
         return True, item
 
 
+class QueriesSummaryWithoutRedisEventProcessor(EventProcessor):
+    def __init__(self, r: redis.StrictRedis):
+        super().__init__(r)
+        self.subscribe("QueriesSummary")
+
+    def process(self, item: Mapping[str, Any]):
+        data = item['data']
+        server_id = item['serverId']
+        timestamp = item['timeStamp']
+
+        processed_data = {}
+        total_queries = 0
+        for queries_by_ip in data:
+            ip = queries_by_ip['ip']
+            total_queries_by_ip = 0
+            for qnames in data['queries'].values():
+                total_queries_by_ip += len(qnames)
+            total_queries += total_queries_by_ip
+            processed_data['ip'] = ip
+
+
+
+
+
 class WindowAlgorithmEventProcessor(EventProcessor):
     """
     Abstract representation of the algorithm that accumulates data on a certain period of time (timespan)
