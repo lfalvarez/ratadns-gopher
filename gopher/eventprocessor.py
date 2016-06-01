@@ -26,7 +26,6 @@ class EventConsumer(object):
 class EventProcessor(threading.Thread):
     """
     One event processor for each URL
-    # What's the objective of this class?
     """
     def __init__(self, r: redis.StrictRedis):
         threading.Thread.__init__(self)
@@ -56,7 +55,7 @@ class EventProcessor(threading.Thread):
 
 class ServerDataEventProcessor(EventProcessor):
     """
-    # What's the objective of this class?
+    Process of QueriesPerSecond and AnswersPerSecond events (which doesn't need processing in Gopher)
     """
     def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
         super().__init__(r)
@@ -138,7 +137,7 @@ class WindowAlgorithmEventProcessor(EventProcessor):
         """
         Takes some data and saves it in a redis set, with current time (in millis) as score
         """
-        # TODO: Fix bug: json.dumps is a string!
+        # TODO: Fix bug: json.dumps(data)[0] is a ' " '. Should be the IP (just data?)
         self.redis.zadd(timestamp_set[0], current_time, json.dumps(data)[0])
         self.redis.zadd(timestamp_set[1], current_time, total)
 
