@@ -1,5 +1,5 @@
 import queue
-from typing import Mapping, Tuple, Any
+from typing import Mapping, Tuple, Any, Sequence
 
 import redis
 import threading
@@ -67,27 +67,64 @@ class ServerDataEventProcessor(EventProcessor):
 
 
 class QueriesSummaryWithoutRedisEventProcessor(EventProcessor):
-    def __init__(self, r: redis.StrictRedis):
+    def __init__(self, r: redis.StrictRedis, _):
         super().__init__(r)
         self.subscribe("QueriesSummary")
 
-    def process(self, item: Mapping[str, Any]):
-        data = item['data']
-        server_id = item['serverId']
-        timestamp = item['timeStamp']
+        # Mapping[str, Sequence[Tuple[Mapping, int]]
+        # dictionary which maps an IP with a list of <querys, timestamp> tuples.
+        self.queries_by_client_dict = {}
 
-        processed_data = {}
-        total_queries = 0
+    def process(self, item: Mapping[str, Any]) -> Tuple[bool, Any]:
+        data = item['data']
+        now = Time.mktime(datetime.datetime.now().timetuple()) * 1000.0
+
+        # first add the new queries to the dictionary
         for queries_by_ip in data:
             ip = queries_by_ip['ip']
-            total_queries_by_ip = 0
-            for qnames in data['queries'].values():
-                total_queries_by_ip += len(qnames)
-            total_queries += total_queries_by_ip
-            processed_data['ip'] = ip
+            new_queries_time = (queries_by_ip['queries'], now)
+            if ip in self.queries_by_client_dict:
+                queries_by_client = self.queries_by_client_dict[ip]
+                queries_by_client.append(new_queries_time)
+            else:
+                self.queries_by_client_dict[ip] = [new_queries_time]
 
+        # then remove the older-than-now-minus-60-seconds queries
+        # TODO: remove the hardcoded 60 seconds
+        previous_time = now - 60.0 * 1000.0
+        # previous_time stores the time 60 seconds before now.
+        for ip in self.queries_by_client_dict.keys():
+            queries_to_remove = 0
+            for query, timestamp in self.queries_by_client_dict[ip]:
+                if timestamp > previous_time:
+                    break
+                queries_to_remove += 1
 
+            if len(self.queries_by_client_dict[ip]) == queries_to_remove:
+                del self.queries_by_client_dict[ip]
+            else:
+                self.queries_by_client_dict[ip] = self.queries_by_client_dict[ip][queries_to_remove:]
 
+        # Finally return the expected object
+        # merged_queries = [{"ip": ip, "queries": []} for ip, queries_by_ip in self.queries_by_client_dict.items()]
+        result = []
+        total_queries = 0
+        for ip, queries_by_ip in self.queries_by_client_dict.items():
+            merged_queries = {}
+            ip_total_queries = 0
+            for (queries, _) in queries_by_ip:
+                for qtype, qnames in queries.items():
+                    if qtype in merged_queries:
+                        merged_queries[qtype] += qnames  # Concatenate each queries lists
+                    else:
+                        merged_queries[qtype] = qnames
+                    ip_total_queries += len(qnames)
+                    total_queries += len(qnames)
+            result.append({"ip": ip, "queries": merged_queries, "queries_count": ip_total_queries})
+        for queries_by_ip in result:
+            queries_by_ip["percentage"] = queries_by_ip["queries_count"] / total_queries
+
+        return True, result
 
 
 class WindowAlgorithmEventProcessor(EventProcessor):
