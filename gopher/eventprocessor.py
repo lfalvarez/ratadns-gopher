@@ -1,5 +1,5 @@
 import queue
-from typing import Mapping, Tuple, Any, Sequence
+from typing import Mapping, Tuple, Any, Sequence, TypeVar
 
 import redis
 import threading
@@ -65,66 +65,95 @@ class ServerDataEventProcessor(EventProcessor):
     def process(self, item):
         return True, item
 
-
+T = TypeVar('T')
 class QueriesSummaryWithoutRedisEventProcessor(EventProcessor):
-    def __init__(self, r: redis.StrictRedis, _):
+    def __init__(self, r: redis.StrictRedis, config):
         super().__init__(r)
         self.subscribe("QueriesSummary")
 
         # Mapping[str, Sequence[Tuple[Mapping, int]]
-        # dictionary which maps an IP with a list of <querys, timestamp> tuples.
+        # Dictionary which maps an IP with a list of <queries, timestamp> tuples.
         self.queries_by_client_dict = {}
 
-    def process(self, item: Mapping[str, Any]) -> Tuple[bool, Any]:
-        data = item['data']
-        now = Time.mktime(datetime.datetime.now().timetuple()) * 1000.0
-
-        # first add the new queries to the dictionary
-        for queries_by_ip in data:
-            ip = queries_by_ip['ip']
-            new_queries_time = (queries_by_ip['queries'], now)
-            if ip in self.queries_by_client_dict:
-                queries_by_client = self.queries_by_client_dict[ip]
-                queries_by_client.append(new_queries_time)
+    def add_data_to_dict(self, data: Sequence[Mapping[T, Any]], key: T, current_timestamp: float):
+        for queries_by_key in data:
+            query_key = queries_by_key[key]
+            current_queries = (queries_by_key, current_timestamp)
+            if query_key in self.queries_by_client_dict:
+                self.queries_by_client_dict[query_key].append(current_queries)
             else:
-                self.queries_by_client_dict[ip] = [new_queries_time]
+                self.queries_by_client_dict[query_key] = [current_queries]
 
-        # then remove the older-than-now-minus-60-seconds queries
-        # TODO: remove the hardcoded 60 seconds
-        previous_time = now - 60.0 * 1000.0
-        # previous_time stores the time 60 seconds before now.
-        for ip in self.queries_by_client_dict.keys():
+    def remove_old_data_from_dict(self, previous_time: float):
+        keys_to_remove = []
+        for key in self.queries_by_client_dict.keys():
             queries_to_remove = 0
-            for query, timestamp in self.queries_by_client_dict[ip]:
+            for query, timestamp in self.queries_by_client_dict[key]:
                 if timestamp > previous_time:
                     break
                 queries_to_remove += 1
+            if queries_to_remove > 0:
+                keys_to_remove.append((key, queries_to_remove))
 
-            if len(self.queries_by_client_dict[ip]) == queries_to_remove:
-                del self.queries_by_client_dict[ip]
+        for key, queries_to_remove in keys_to_remove:
+            if len(self.queries_by_client_dict[key]) == queries_to_remove:
+                del self.queries_by_client_dict[key]
             else:
-                self.queries_by_client_dict[ip] = self.queries_by_client_dict[ip][queries_to_remove:]
+                self.queries_by_client_dict[key] = self.queries_by_client_dict[key][queries_to_remove:]
 
-        # Finally return the expected object
-        # merged_queries = [{"ip": ip, "queries": []} for ip, queries_by_ip in self.queries_by_client_dict.items()]
+    def merge_data_from_dict(self) -> Sequence[Mapping[str, Any]]:
         result = []
         total_queries = 0
         for ip, queries_by_ip in self.queries_by_client_dict.items():
             merged_queries = {}
             ip_total_queries = 0
-            for (queries, _) in queries_by_ip:
+            for (queries_and_ip, _) in queries_by_ip:
+                queries = queries_and_ip['queries']
                 for qtype, qnames in queries.items():
                     if qtype in merged_queries:
-                        merged_queries[qtype] += qnames  # Concatenate each queries lists
+                        merged_queries[qtype].extend(qnames)  # Concatenate each queries lists
                     else:
-                        merged_queries[qtype] = qnames
+                        merged_queries[qtype] = qnames.copy()
                     ip_total_queries += len(qnames)
                     total_queries += len(qnames)
             result.append({"ip": ip, "queries": merged_queries, "queries_count": ip_total_queries})
         for queries_by_ip in result:
-            queries_by_ip["percentage"] = queries_by_ip["queries_count"] / total_queries
+            queries_by_ip["percentage"] = (queries_by_ip["queries_count"] / total_queries) * 100
+        return result
 
-        return True, result
+    def get_top_k_by_key(self, d, k, key) -> Sequence[Mapping[str, Any]]:
+        top_k_queries = d[:k]
+        top_k_queries.sort(key=lambda query: query[key], reverse=True)
+        for query in d[k:]:
+            i = 0
+            while i < k and query[key] > top_k_queries[-1 * (i + 1)][key]:
+                i += 1
+            if i > 0:
+                top_k_queries.insert(k - i, query)
+                del top_k_queries[-1]
+        return top_k_queries
+
+    def process(self, item: Mapping[str, Any]) -> Tuple[bool, Any]:
+        data = item['data']
+        current_timestamp = Time.mktime(datetime.datetime.now().timetuple()) * 1000.0
+
+        # Add data to Dictionary
+        self.add_data_to_dict(data, "ip", current_timestamp)
+
+        # Remove old data from Dictionary from window time
+        # TODO: get 60 seconds from config file
+        current_window_start_timestamp = current_timestamp - 60.0 * 1000.0
+        self.remove_old_data_from_dict(current_window_start_timestamp)
+
+        # Merge data (leave all the queries made by an ip together by type)
+        merged_data = self.merge_data_from_dict()
+
+        # Get TopK queries_count ip's
+        # TODO: get k from config file
+        k = 5
+        top_k_queries = self.get_top_k_by_key(merged_data, k, "queries_count")
+
+        return True, top_k_queries
 
 
 class WindowAlgorithmEventProcessor(EventProcessor):
