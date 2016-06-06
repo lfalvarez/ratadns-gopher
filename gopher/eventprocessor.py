@@ -102,37 +102,54 @@ class QueriesSummaryWithoutRedisEventProcessor(EventProcessor):
             else:
                 self.queries_by_client_dict[key] = self.queries_by_client_dict[key][queries_to_remove:]
 
-    def merge_data_from_dict(self) -> Sequence[Mapping[str, Any]]:
+    @staticmethod
+    def timestamp_in_time_span(timestamp: float, now: float, time_span: float) -> bool:
+        return timestamp > now - time_span*60*1000
+
+    def merge_data_from_dict(self, time_spans: Sequence[float], current_timestamp: float) -> Sequence[Mapping[str, Any]]:
         result = []
-        total_queries = 0
-        for ip, queries_by_ip in self.queries_by_client_dict.items():
-            merged_queries = {}
-            ip_total_queries = 0
-            for (queries_and_ip, _) in queries_by_ip:
-                queries = queries_and_ip['queries']
-                for qtype, qnames in queries.items():
-                    if qtype in merged_queries:
-                        merged_queries[qtype].extend(qnames)  # Concatenate each queries lists
-                    else:
-                        merged_queries[qtype] = qnames.copy()
-                    ip_total_queries += len(qnames)
-                    total_queries += len(qnames)
-            result.append({"ip": ip, "queries": merged_queries, "queries_count": ip_total_queries})
-        for queries_by_ip in result:
-            queries_by_ip["percentage"] = (queries_by_ip["queries_count"] / total_queries) * 100
+        for time_span in time_spans:
+            time_span_result = []
+            total_queries = 0
+
+            for ip, queries_by_ip in self.queries_by_client_dict.items():
+                merged_queries = {}
+                ip_total_queries = 0
+                time_span_queries_by_ip = [q for q, ts in queries_by_ip
+                                           if self.timestamp_in_time_span(ts, current_timestamp, time_span)]
+
+                for queries_and_ip in time_span_queries_by_ip:
+                    queries = queries_and_ip['queries']
+                    for qtype, qnames in queries.items():
+                        if qtype in merged_queries:
+                            merged_queries[qtype].extend(qnames)  # Concatenate each queries lists
+                        else:
+                            merged_queries[qtype] = qnames.copy()
+                        ip_total_queries += len(qnames)
+                        total_queries += len(qnames)
+
+                if ip_total_queries > 0:
+                    time_span_result.append({"ip": ip, "queries": merged_queries, "queries_count": ip_total_queries})
+
+            for queries_by_ip in time_span_result:
+                queries_by_ip["percentage"] = (queries_by_ip["queries_count"] / total_queries) * 100
+
+            result.append({"time_span": time_span, "merged_data": time_span_result})
+
         return result
 
     def get_top_k_by_key(self, d, k, key) -> Sequence[Mapping[str, Any]]:
-        top_k_queries = d[:k]
+        top_k_queries = d["merged_data"][:k]
         top_k_queries.sort(key=lambda query: query[key], reverse=True)
-        for query in d[k:]:
+        for query in d["merged_data"][k:]:
             i = 0
             while i < k and query[key] > top_k_queries[-1 * (i + 1)][key]:
                 i += 1
             if i > 0:
                 top_k_queries.insert(k - i, query)
                 del top_k_queries[-1]
-        return top_k_queries
+
+        return {"time_span": d["time_span"], "data": top_k_queries}
 
     def process(self, item: Mapping[str, Any]) -> Tuple[bool, Any]:
         data = item['data']
@@ -148,12 +165,12 @@ class QueriesSummaryWithoutRedisEventProcessor(EventProcessor):
         self.remove_old_data_from_dict(current_window_start_timestamp)
 
         # Merge data (leave all the queries made by an ip together by type)
-        merged_data = self.merge_data_from_dict()
+        merged_data = self.merge_data_from_dict(self.config["summary"]["times"], current_timestamp)
 
         # Get TopK queries_count ip's
         k = self.config["summary"]["output_limit"]
-        top_k_queries = self.get_top_k_by_key(merged_data, k, "queries_count")
 
+        top_k_queries = list(map(lambda o: self.get_top_k_by_key(o, k, "queries_count"), merged_data))
         return True, top_k_queries
 
 

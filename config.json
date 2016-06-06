@@ -37,7 +37,7 @@
     "times": [1]
   },
   "summary": {
-    "times": [1, 15, 7, 24, 2],
+    "times": [0.1, 0.2],
     "output_limit": 5
   }
 
