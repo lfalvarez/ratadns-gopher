@@ -142,8 +142,9 @@ class QueriesSummaryWithoutRedisEventProcessor(EventProcessor):
         self.add_data_to_dict(data, "ip", current_timestamp)
 
         # Remove old data from Dictionary from window time
-        # TODO: get 60 seconds from config file
-        current_window_start_timestamp = current_timestamp - 60.0 * 1000.0
+        # It will be stored the max quantity of data according to window times
+        max_window_time = max(self.config["summary"]["times"]) * 60
+        current_window_start_timestamp = current_timestamp - max_window_time * 1000.0
         self.remove_old_data_from_dict(current_window_start_timestamp)
 
         # Merge data (leave all the queries made by an ip together by type)
