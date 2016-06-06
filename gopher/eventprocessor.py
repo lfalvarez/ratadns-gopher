@@ -121,12 +121,13 @@ class QueriesSummaryWithoutRedisEventProcessor(EventProcessor):
                 for queries_and_ip in time_span_queries_by_ip:
                     queries = queries_and_ip['queries']
                     for qtype, qnames in queries.items():
+                        qnames_length = len(qnames)
                         if qtype in merged_queries:
-                            merged_queries[qtype].extend(qnames)  # Concatenate each queries lists
+                            merged_queries[qtype] += qnames_length  # Concatenate each queries lists
                         else:
-                            merged_queries[qtype] = qnames.copy()
-                        ip_total_queries += len(qnames)
-                        total_queries += len(qnames)
+                            merged_queries[qtype] = qnames_length
+                        ip_total_queries += qnames_length
+                        total_queries += qnames_length
 
                 if ip_total_queries > 0:
                     time_span_result.append({"ip": ip, "queries": merged_queries, "queries_count": ip_total_queries})
