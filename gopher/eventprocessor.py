@@ -67,9 +67,10 @@ class ServerDataEventProcessor(EventProcessor):
 
 T = TypeVar('T')
 class QueriesSummaryWithoutRedisEventProcessor(EventProcessor):
-    def __init__(self, r: redis.StrictRedis, config):
+    def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
         super().__init__(r)
         self.subscribe("QueriesSummary")
+        self.config = config
 
         # Mapping[str, Sequence[Tuple[Mapping, int]]
         # Dictionary which maps an IP with a list of <queries, timestamp> tuples.
@@ -149,8 +150,7 @@ class QueriesSummaryWithoutRedisEventProcessor(EventProcessor):
         merged_data = self.merge_data_from_dict()
 
         # Get TopK queries_count ip's
-        # TODO: get k from config file
-        k = 5
+        k = self.config["summary"]["output_limit"]
         top_k_queries = self.get_top_k_by_key(merged_data, k, "queries_count")
 
         return True, top_k_queries

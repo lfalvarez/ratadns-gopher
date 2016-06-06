@@ -37,7 +37,8 @@
     "times": [1]
   },
   "summary": {
-    "times": [1]
+    "times": [1],
+    "output_limit": 5
   }
 
 
