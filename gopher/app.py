@@ -34,7 +34,7 @@ def create_wsgi_app(name):
                     data = ec.get_data()
                     yield 'data: %s\n\n' % json.dumps(data)
             except GeneratorExit:
-                event_processor.unregister_consumer(ec)
+                event_processor.deregister_consumer(ec)
 
         return Response(stream(),
                         mimetype='text/event-stream',
@@ -42,7 +42,7 @@ def create_wsgi_app(name):
 
     @app.route("/{}/<name>".format(config["sse_route"]))
     def sse_data(name=None):
-        if name != None:
+        if name is not None:
             if name in active_event_processors:
                 return create_sse_response(active_event_processors[name])
             else:
