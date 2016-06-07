@@ -53,19 +53,6 @@ class EventProcessor(threading.Thread):
         pass
 
 
-class ServerDataEventProcessor(EventProcessor):
-    """
-    Process of QueriesPerSecond and AnswersPerSecond events (which doesn't need processing in Gopher)
-    """
-    def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
-        super().__init__(r)
-        self.subscribe("QueriesPerSecond")
-        self.subscribe("AnswersPerSecond")
-
-    def process(self, item):
-        return True, item
-
-
 class MovingWindow(object):
     def __init__(self):
         self.item_timestamp_list = []
@@ -188,6 +175,31 @@ class QueriesSummaryEventProcessor(WindowedEventProcessor):
                 })
             result.append(time_span_result)
         return result
+
+
+class ServerDataEventProcessor(WindowedEventProcessor):
+    """
+    Process of QueriesPerSecond and AnswersPerSecond events (which doesn't need processing in Gopher)
+    """
+    def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
+        super().__init__(r, config)
+        self.subscribe("QueriesPerSecond")
+        # self.subscribe("AnswersPerSecond")
+        self.server_data_config = config["server_data"]
+        self.time_spans = self.server_data_config["times"]
+
+    def merge_data(self, current_timestamp: float):
+        result = []
+        for time_span in self.time_spans:
+            fievel_windows = self.moving_window.get_items_after_limit(current_timestamp - time_span*60*1000)
+            time_span_result = sum(fievel_windows) / float(len(fievel_windows))
+
+            result.append({"time_span": time_span, "queries_per_second": time_span_result})
+
+        return result
+
+
+
 
 
 class WindowAlgorithmEventProcessor(EventProcessor):
