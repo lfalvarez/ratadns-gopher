@@ -1,5 +1,5 @@
 import queue
-from typing import Mapping, Tuple, Any, Sequence, TypeVar
+from typing import Mapping, Tuple, Any, Sequence
 
 import redis
 import threading
@@ -65,114 +65,129 @@ class ServerDataEventProcessor(EventProcessor):
     def process(self, item):
         return True, item
 
-T = TypeVar('T')
-class QueriesSummaryWithoutRedisEventProcessor(EventProcessor):
+
+class MovingWindow(object):
+    def __init__(self):
+        self.item_timestamp_list = []
+
+    def add_item(self, item: Any, now_timestamp: float):
+        self.item_timestamp_list.append((item, now_timestamp))
+
+    def remove_old_data(self, lower_timestamp_limit):
+        items_to_remove = 0
+        for item, ts in self.item_timestamp_list:
+            if ts > lower_timestamp_limit:
+                break
+            items_to_remove += 1
+        del self.item_timestamp_list[:items_to_remove]
+
+    def get_items_after_limit(self, timestamp_limit: float):
+        return [item for item, ts in self.item_timestamp_list if ts > timestamp_limit]
+
+
+def get_topk(l: Sequence[Any], k: int, key):
+    top_k_items = l[:k]
+    top_k_items.sort(key=key, reverse=True)
+    for item in l[k:]:
+        i = 0
+        while i < k and key(item) > key(top_k_items[-1 * (i + 1)]):
+            i += 1
+        if i > 0:
+            top_k_items.insert(k - i, item)
+            del top_k_items[-1]
+
+    return top_k_items
+
+
+class WindowedEventProcessor(EventProcessor):
     def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
         super().__init__(r)
-        self.subscribe("QueriesSummary")
-        self.config = config
+        self.moving_window = MovingWindow()
+        self.time_spans = None
 
-        # Mapping[str, Sequence[Tuple[Mapping, int]]
-        # Dictionary which maps an IP with a list of <queries, timestamp> tuples.
-        self.queries_by_client_dict = {}
+    def merge_data(self, current_timestamp: float) -> Sequence[Mapping]:
+        pass
 
-    def add_data_to_dict(self, data: Sequence[Mapping[T, Any]], key: T, current_timestamp: float):
-        for queries_by_key in data:
-            query_key = queries_by_key[key]
-            current_queries = (queries_by_key, current_timestamp)
-            if query_key in self.queries_by_client_dict:
-                self.queries_by_client_dict[query_key].append(current_queries)
-            else:
-                self.queries_by_client_dict[query_key] = [current_queries]
+    def select_item(self, data):
+        return data
 
-    def remove_old_data_from_dict(self, previous_time: float):
-        keys_to_remove = []
-        for key in self.queries_by_client_dict.keys():
-            queries_to_remove = 0
-            for query, timestamp in self.queries_by_client_dict[key]:
-                if timestamp > previous_time:
-                    break
-                queries_to_remove += 1
-            if queries_to_remove > 0:
-                keys_to_remove.append((key, queries_to_remove))
+    def filter_item(self, data):
+        return True
 
-        for key, queries_to_remove in keys_to_remove:
-            if len(self.queries_by_client_dict[key]) == queries_to_remove:
-                del self.queries_by_client_dict[key]
-            else:
-                self.queries_by_client_dict[key] = self.queries_by_client_dict[key][queries_to_remove:]
-
-    @staticmethod
-    def timestamp_in_time_span(timestamp: float, now: float, time_span: float) -> bool:
-        return timestamp > now - time_span*60*1000
-
-    def merge_data_from_dict(self, time_spans: Sequence[float], current_timestamp: float) -> Sequence[Mapping[str, Any]]:
-        result = []
-        for time_span in time_spans:
-            time_span_result = []
-            total_queries = 0
-
-            for ip, queries_by_ip in self.queries_by_client_dict.items():
-                merged_queries = {}
-                ip_total_queries = 0
-                time_span_queries_by_ip = [q for q, ts in queries_by_ip
-                                           if self.timestamp_in_time_span(ts, current_timestamp, time_span)]
-
-                for queries_and_ip in time_span_queries_by_ip:
-                    queries = queries_and_ip['queries']
-                    for qtype, qnames in queries.items():
-                        qnames_length = len(qnames)
-                        if qtype in merged_queries:
-                            merged_queries[qtype] += qnames_length  # Concatenate each queries lists
-                        else:
-                            merged_queries[qtype] = qnames_length
-                        ip_total_queries += qnames_length
-                        total_queries += qnames_length
-
-                if ip_total_queries > 0:
-                    time_span_result.append({"ip": ip, "queries": merged_queries, "queries_count": ip_total_queries})
-
-            for queries_by_ip in time_span_result:
-                queries_by_ip["percentage"] = (queries_by_ip["queries_count"] / total_queries) * 100
-
-            result.append({"time_span": time_span, "merged_data": time_span_result})
-
-        return result
-
-    def get_top_k_by_key(self, d, k, key) -> Sequence[Mapping[str, Any]]:
-        top_k_queries = d["merged_data"][:k]
-        top_k_queries.sort(key=lambda query: query[key], reverse=True)
-        for query in d["merged_data"][k:]:
-            i = 0
-            while i < k and query[key] > top_k_queries[-1 * (i + 1)][key]:
-                i += 1
-            if i > 0:
-                top_k_queries.insert(k - i, query)
-                del top_k_queries[-1]
-
-        return {"time_span": d["time_span"], "data": top_k_queries}
-
-    def process(self, item: Mapping[str, Any]) -> Tuple[bool, Any]:
+    def process(self, item: Mapping[str, Any]):
         data = item['data']
         current_timestamp = Time.mktime(datetime.datetime.now().timetuple()) * 1000.0
 
         # Add data to Dictionary
-        self.add_data_to_dict(data, "ip", current_timestamp)
+        self.moving_window.add_item(data, current_timestamp)
 
         # Remove old data from Dictionary from window time
         # It will be stored the max quantity of data according to window times
-        max_window_time = max(self.config["summary"]["times"]) * 60
+        max_window_time = max(self.time_spans) * 60
         current_window_start_timestamp = current_timestamp - max_window_time * 1000.0
-        self.remove_old_data_from_dict(current_window_start_timestamp)
+        self.moving_window.remove_old_data(current_window_start_timestamp)
 
         # Merge data (leave all the queries made by an ip together by type)
-        merged_data = self.merge_data_from_dict(self.config["summary"]["times"], current_timestamp)
+        merged_data = self.merge_data(current_timestamp)
 
+        selected_items = [self.select_item(item) for item in merged_data if self.filter_item(item)]
+
+        return True, selected_items
+
+
+class QueriesSummaryEventProcessor(WindowedEventProcessor):
+    def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
+        super().__init__(r, config)
+        self.subscribe("QueriesSummary")
+        self.summary_config = config["summary"]
+        self.time_spans = self.summary_config["times"]
+
+    def select_item(self, data):
         # Get TopK queries_count ip's
-        k = self.config["summary"]["output_limit"]
+        k = self.summary_config["output_limit"]
 
-        top_k_queries = list(map(lambda o: self.get_top_k_by_key(o, k, "queries_count"), merged_data))
-        return True, top_k_queries
+        def key_fn(ip_data):
+            return ip_data["queries_count"]
+
+        return {"time_span": data["time_span"], "data": get_topk(data["data"], k, key_fn)}
+
+    def merge_data(self, current_timestamp: float):
+        result = []
+        for time_span in self.time_spans:
+            time_span_result = {
+                "time_span": time_span,
+                "data": []
+            }
+            accumulator = {}
+            total_queries = 0
+
+            fievel_windows = self.moving_window.get_items_after_limit(current_timestamp - time_span*60*1000)
+            for fievel_window in fievel_windows:
+                for queries_by_ip in fievel_window:
+                    ip = queries_by_ip["ip"]
+                    queries = queries_by_ip["queries"]
+
+                    if ip not in accumulator:
+                        accumulator[ip] = {"queries_count": 0, "queries": {}}
+
+                    for qtype, qnames in queries.items():
+                        if qtype in accumulator[ip]["queries"]:
+                            accumulator[ip]["queries"][qtype] += len(qnames)
+                        else:
+                            accumulator[ip]["queries"][qtype] = len(qnames)
+
+                        total_queries += len(qnames)
+                        accumulator[ip]["queries_count"] += len(qnames)
+
+            for ip, ip_data in accumulator.items():
+                time_span_result["data"].append({
+                    "ip": ip,
+                    "queries": ip_data["queries"],
+                    "queries_count": ip_data["queries_count"],
+                    "percentage": 100*ip_data["queries_count"]/total_queries
+                })
+            result.append(time_span_result)
+        return result
 
 
 class WindowAlgorithmEventProcessor(EventProcessor):
@@ -303,138 +318,6 @@ class WindowAlgorithmEventProcessor(EventProcessor):
 
     def parse_old_data(self, old_data):
         pass
-
-
-class QueriesSummaryEventProcessor(WindowAlgorithmEventProcessor):
-    """
-    Receives queries summary information and processes it using the time window algorithm
-    """
-    def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
-        super().__init__('summary', r, config)
-        self.subscribe("QueriesSummary")
-
-    def increase_set(self, element_list: Mapping[str, int], historic_set: list, current_time: int, server: str,
-                     time: int,
-                     time_index: int):  # What means each parameter?
-        """
-        Takes the queries summary information received and saves every (queries, timestamp) pair in relation to their
-        ip. If the ip is already in the set, first all queries outside the window are erased (since they are ordered
-        in decreasing timestamp order, all queries after the first outside the window will be outside also) and then
-        the new pair is inserted in first place
-        """
-        # TODO: refactor names!
-        # TODO: add new_queries length to total
-        time_diff = current_time - time * 1000.0
-        super().increase_total(historic_set[len(historic_set) - 1], time_diff, server, time_index)
-        for element in element_list:
-            ip = element['ip']
-            queries_list = element['queries']
-            old_json = self.redis.hget("summary:historic_{}_{}".format(server, time), ip)
-            total = 0
-
-            if old_json is not None:
-                old_queries = json.loads(old_json.decode("utf-8"))
-                for i in range(0, len(old_queries)):
-                    query = old_queries[i]
-                    if query[1] < time_diff:
-                        old_queries = old_queries[0:i]
-                        break
-                    else:
-                        for type in query[0]:
-                            total += len(query[0][type])
-
-                old_queries.insert(0, (queries_list, current_time))
-
-                self.redis.hset("summary:historic_{}_{}".format(server, time), ip, json.dumps(old_queries))
-                self.redis.zadd("summary:ip_size_{}_{}".format(server, time), total, ip)
-            else:
-                new_queries = [(queries_list, current_time)]
-                for type in queries_list:
-                    total += len(queries_list[type])
-
-                self.redis.hset("summary:historic_{}_{}".format(server, time), ip, json.dumps(new_queries))
-                self.redis.zadd("summary:ip_size_{}_{}".format(server, time), total, ip)
-
-    def increase_timespan(self, current_time, timestamp_set, item, total):  # What means each parameter?
-        """
-        For every sender ip, saves the queries data and current time
-        """
-        for element in item:
-            super().increase_timespan(current_time, timestamp_set, element['ip'], total)
-
-    def get_top_data(self, server: str, time: int):  # What means each parameter?
-        """
-        Gets ips with more queries in this time window, obtains related information from redis, formats data and
-        returns it
-        """
-        # TODO: refactor set names
-        top_elements = self.redis.zrevrange("summary:ip_size_{}_{}".format(server, time), 0, 4, withscores=True)
-        top_list = []
-
-        for element in top_elements:
-            ip = element[0].decode("utf-8")
-            queries = json.loads(self.redis.hget("summary:historic_{}_{}".format(server, time), ip).decode("utf-8"))
-            top_list.append((ip, self.collapse_by_type(queries), element[1]))
-
-        return top_list
-
-    def cleanup_old_data(self, set_list, timespan_set, time_diff):  # What means each parameter?
-        """
-        Gets all ips outside the time window and erases them from all sets
-        """
-        old_elements = self.redis.zrangebyscore(timespan_set, "-inf", time_diff)
-
-        for element in old_elements:
-            self.redis.zrem(set_list[0], element)
-            self.redis.zrem(set_list[1], element)
-            self.redis.hdel(set_list[2], element)
-
-    def order_data(self, item: Mapping[str, int]):  # What means each parameter?
-        """
-        Takes the information received and calculates the total number of queries that the summary represents
-        """
-        total = 0
-
-        for ip in item:
-            queries = ip['queries']
-            for type in queries:
-                total += len(queries[type])
-
-        return [item, total]
-
-    def timespan_set(self, server, time):  # What means each parameter?
-        """
-        Redis set names associated to timestamp (so that old information can be erased accordingly)
-        """
-        return ["summary:ip_{}_{}".format(server, time), "summary:total_{}_{}".format(server, time)]
-
-    def format_data(self, l: list, total: int) -> list:  # What means each parameter?
-        """
-        Takes the list containing top information, and each pair is converted to a tuple containing:
-        (ip, queries, total number of queries, percentage of queries respect all queries in the window)
-        """
-        return list(map(lambda x: (x[0], x[1], int(x[2]), (x[2] / total) if total > 0 else 0), l))
-
-    def server_list(self, server: str, time: int):  # What means each parameter?
-        """
-        Redis set names list associated to this type of information
-        """
-        return ["summary:ip_{}_{}".format(server, time), "summary:ip_size_{}_{}".format(server, time),
-                "summary:historic_{}_{}".format(server, time), self.name + ":total_{}_{}".format(server, time)]
-
-    @staticmethod
-    def collapse_by_type(queries):  # What means each parameter?
-        """
-        Takes a list of queries, timestamp pairs and returns a new dictionary with queries grouped by type
-        """
-        queries_by_type = {}
-        for element in queries:
-            query = element[0]
-            for type in query:
-                queries_by_type.setdefault(type, [])
-                queries_by_type[type] = queries_by_type[type] + query[type]
-
-        return queries_by_type
 
 
 class TopCountEventProcessor(WindowAlgorithmEventProcessor):

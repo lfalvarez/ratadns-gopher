@@ -28,7 +28,7 @@
   ],
   "sse_route": "sse",
   "active_event_processors": [
-    "queries_summary_v2"
+    "queries_summary"
   ],
   "topk": {
     "times": [1, 5, 15]
