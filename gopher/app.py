@@ -1,7 +1,7 @@
 import redis
 import json
 from gopher import EventConsumer, ServerDataEventProcessor, EventProcessor, QueriesSummaryEventProcessor, \
-    TopKEventProcessor, MalformedPacketsEventProcessor
+    TopKEventProcessor, MalformedPacketsEventProcessor, TopQNamesEventProcessor
 from flask import Flask, Response
 
 
@@ -11,7 +11,7 @@ def create_wsgi_app(name):
     event_processors = {
         'server_data': ServerDataEventProcessor,
         'queries_summary': QueriesSummaryEventProcessor,
-        'topk': TopKEventProcessor,
+        'topk': TopQNamesEventProcessor,
         'malformed': MalformedPacketsEventProcessor
     }
 
