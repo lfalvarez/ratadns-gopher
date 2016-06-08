@@ -41,7 +41,8 @@
   "summary": {
     "times": [1, 5, 15],
     "output_limit": 5
+  },
+  "server_data": {
+    "times": [1, 5, 15]
   }
-
-
 }

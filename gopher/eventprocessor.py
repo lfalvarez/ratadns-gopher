@@ -53,19 +53,6 @@ class EventProcessor(threading.Thread):
         pass
 
 
-class ServerDataEventProcessor(EventProcessor):
-    """
-    Process of QueriesPerSecond and AnswersPerSecond events (which doesn't need processing in Gopher)
-    """
-    def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
-        super().__init__(r)
-        self.subscribe("QueriesPerSecond")
-        self.subscribe("AnswersPerSecond")
-
-    def process(self, item):
-        return True, item
-
-
 class MovingWindow(object):
     def __init__(self):
         self.item_timestamp_list = []
@@ -115,11 +102,10 @@ class WindowedEventProcessor(EventProcessor):
         return True
 
     def process(self, item: Mapping[str, Any]):
-        data = item['data']
         current_timestamp = Time.mktime(datetime.datetime.now().timetuple()) * 1000.0
 
         # Add data to Dictionary
-        self.moving_window.add_item(data, current_timestamp)
+        self.moving_window.add_item(item, current_timestamp)
 
         # Remove old data from Dictionary from window time
         # It will be stored the max quantity of data according to window times
@@ -149,45 +135,122 @@ class QueriesSummaryEventProcessor(WindowedEventProcessor):
         def key_fn(ip_data):
             return ip_data["queries_count"]
 
-        return {"time_span": data["time_span"], "data": get_topk(data["data"], k, key_fn)}
+        for server_data in data["servers_data"]:
+            server_data["clients_data"] = get_topk(server_data["clients_data"], k, key_fn)
+
+        return data
 
     def merge_data(self, current_timestamp: float):
         result = []
         for time_span in self.time_spans:
-            time_span_result = {
-                "time_span": time_span,
-                "data": []
-            }
             accumulator = {}
             total_queries = 0
 
             fievel_windows = self.moving_window.get_items_after_limit(current_timestamp - time_span*60*1000)
             for fievel_window in fievel_windows:
-                for queries_by_ip in fievel_window:
+                server_id = fievel_window["serverId"]
+                window_data = fievel_window["data"]
+
+                if server_id not in accumulator:
+                    accumulator[server_id] = {}
+
+                server_accumulator = accumulator[server_id]
+
+                for queries_by_ip in window_data:
                     ip = queries_by_ip["ip"]
                     queries = queries_by_ip["queries"]
 
                     if ip not in accumulator:
-                        accumulator[ip] = {"queries_count": 0, "queries": {}}
+                        server_accumulator[ip] = {"queries_count": 0, "queries": {}}
 
                     for qtype, qnames in queries.items():
-                        if qtype in accumulator[ip]["queries"]:
-                            accumulator[ip]["queries"][qtype] += len(qnames)
+                        if qtype in server_accumulator[ip]["queries"]:
+                            server_accumulator[ip]["queries"][qtype] += len(qnames)
                         else:
-                            accumulator[ip]["queries"][qtype] = len(qnames)
+                            server_accumulator[ip]["queries"][qtype] = len(qnames)
 
+                        server_accumulator[ip]["queries_count"] += len(qnames)
                         total_queries += len(qnames)
-                        accumulator[ip]["queries_count"] += len(qnames)
 
-            for ip, ip_data in accumulator.items():
-                time_span_result["data"].append({
-                    "ip": ip,
-                    "queries": ip_data["queries"],
-                    "queries_count": ip_data["queries_count"],
-                    "percentage": 100*ip_data["queries_count"]/total_queries
-                })
+            time_span_result = {
+                "time_span": time_span,
+                "servers_data": []
+            }
+
+            for server_id, server_data in accumulator.items():
+                server_result = {
+                    "server_id": server_id,
+                    "clients_data": [{
+                        "ip": ip,
+                        "queries": ip_data["queries"],
+                        "queries_count": ip_data["queries_count"],
+                        "percentage": 100*ip_data["queries_count"]/total_queries
+                    } for ip, ip_data in server_data.items()]
+                }
+                time_span_result["servers_data"].append(server_result)
+
             result.append(time_span_result)
+
         return result
+
+
+class ServerDataEventProcessor(WindowedEventProcessor):
+    """
+    Process of QueriesPerSecond and AnswersPerSecond events (which doesn't need processing in Gopher)
+    """
+    def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
+        super().__init__(r, config)
+        self.subscribe("QueriesPerSecond")
+        self.subscribe("AnswersPerSecond")
+        self.server_data_config = config["server_data"]
+        self.time_spans = self.server_data_config["times"]
+
+    def merge_data(self, current_timestamp: float):
+        result = []
+        for time_span in self.time_spans:
+            accumulator = {}
+
+            fievel_windows = self.moving_window.get_items_after_limit(current_timestamp - time_span*60*1000)
+            for fievel_window in fievel_windows:
+                server_id = fievel_window["serverId"]
+                window_type = fievel_window["type"]
+                window_data = fievel_window["data"]
+
+                if server_id not in accumulator:
+                    accumulator[server_id] = {
+                        "queries_per_second": [],
+                        "answers_per_second": []
+                    }
+
+                server_accumulator = accumulator[server_id]
+                if window_type == "QueriesPerSecond":
+                    server_accumulator["queries_per_second"].append(window_data)
+                elif window_type == "AnswersPerSecond":
+                    server_accumulator["answers_per_second"].append(window_data)
+
+            time_span_result = {
+                "time_span": time_span,
+                "servers_data": []
+            }
+
+            for server_id, server_accumulator in accumulator.items():
+                qps = server_accumulator["queries_per_second"]
+                aps = server_accumulator["answers_per_second"]
+                qps_avg = sum(qps) / float(len(qps)) if len(qps) != 0 else 0
+                aps_avg = sum(aps) / float(len(aps)) if len(aps) != 0 else 0
+                server_result = {
+                    "server_id": server_id,
+                    "queries_per_second": qps_avg,
+                    "answers_per_second": aps_avg
+                }
+                time_span_result["servers_data"].append(server_result)
+
+            result.append(time_span_result)
+
+        return result
+
+
+
 
 
 class WindowAlgorithmEventProcessor(EventProcessor):
