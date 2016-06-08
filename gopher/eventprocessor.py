@@ -160,7 +160,7 @@ class QueriesSummaryEventProcessor(WindowedEventProcessor):
                     ip = queries_by_ip["ip"]
                     queries = queries_by_ip["queries"]
 
-                    if ip not in accumulator:
+                    if ip not in server_accumulator:
                         server_accumulator[ip] = {"queries_count": 0, "queries": {}}
 
                     for qtype, qnames in queries.items():
@@ -177,7 +177,7 @@ class QueriesSummaryEventProcessor(WindowedEventProcessor):
                 "servers_data": []
             }
 
-            for server_id, server_data in accumulator.items():
+            for server_id, server_accumulator in accumulator.items():
                 server_result = {
                     "server_id": server_id,
                     "clients_data": [{
@@ -185,12 +185,11 @@ class QueriesSummaryEventProcessor(WindowedEventProcessor):
                         "queries": ip_data["queries"],
                         "queries_count": ip_data["queries_count"],
                         "percentage": 100*ip_data["queries_count"]/total_queries
-                    } for ip, ip_data in server_data.items()]
+                    } for ip, ip_data in server_accumulator.items()]
                 }
                 time_span_result["servers_data"].append(server_result)
 
             result.append(time_span_result)
-
         return result
 
 
