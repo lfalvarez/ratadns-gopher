@@ -28,14 +28,13 @@
   ],
   "sse_route": "sse",
   "active_event_processors": [
-    "topk"
+    "top_qnames",
+    "queries_summary",
+    "server_data"
   ],
   "top_qnames": {
     "times": [1, 5, 15],
     "output_limit": 5
-  },
-  "malformed": {
-    "times": [1]
   },
   "summary": {
     "times": [1, 5, 15],
