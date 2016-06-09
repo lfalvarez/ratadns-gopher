@@ -271,6 +271,7 @@ class TopQNamesEventProcessor(WindowedEventProcessor):
         result = []
         for time_span in self.time_spans:
             accumulator = {}
+            total_queries = 0
 
             fievel_windows = self.moving_window.get_items_after_limit(current_timestamp - time_span * 60 * 1000)
             for fievel_window in fievel_windows:
@@ -287,6 +288,7 @@ class TopQNamesEventProcessor(WindowedEventProcessor):
                         server_accumulator[qname] = qname_count
                     else:
                         server_accumulator[qname] += qname_count
+                    total_queries += qname_count
 
             time_span_result = {
                 "time_span": time_span,
@@ -298,7 +300,8 @@ class TopQNamesEventProcessor(WindowedEventProcessor):
                     "server_id": server_id,
                     "top_qnames": [{
                         "qname": qname,
-                        "qname_count": qname_count
+                        "qname_count": qname_count,
+                        "percentage": 100*qname_count/total_queries
                     } for qname, qname_count in server_accumulator.items()],
                 }
                 time_span_result["servers_data"].append(server_result)
