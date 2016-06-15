@@ -1,7 +1,7 @@
 import redis
 import json
 from gopher import EventConsumer, ServerDataEventProcessor, EventProcessor, QueriesSummaryEventProcessor, \
-    TopQNamesEventProcessor
+    TopQNamesEventProcessor, ServerDataV2EventProcessor
 from flask import Flask, Response
 
 
@@ -12,6 +12,7 @@ def create_wsgi_app(name):
         'server_data': ServerDataEventProcessor,
         'queries_summary': QueriesSummaryEventProcessor,
         'top_qnames': TopQNamesEventProcessor,
+        'server_data_v2': ServerDataV2EventProcessor
     }
 
     config = json.load(open("config.json"))  # TODO: Think how to pass configuration file
