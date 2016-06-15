@@ -87,8 +87,10 @@ def get_topk(l: Sequence[Any], k: int, key):
 
     return top_k_items
 
+
 def hex2ip(hex_ip: str) -> str:
     return ".".join([str(int(hex_ip[i:i+2],16)) for i in range(0,8,2)])
+
 
 class WindowedEventProcessor(EventProcessor):
     def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
