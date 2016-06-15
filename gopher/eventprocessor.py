@@ -314,7 +314,7 @@ class ServerDataV2EventProcessor(WindowedEventProcessor):
                 "time_span": time_span,
                 "servers_data": [],
                 "total_qps": 0,
-                "total_qps": 0
+                "total_aps": 0
             }
 
             for server_id, server_accumulator in accumulator.items():
