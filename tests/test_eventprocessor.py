@@ -9,18 +9,26 @@ from gopher.eventprocessor import EventConsumer, ServerDataEventProcessor, Event
     QueriesSummaryEventProcessor
 
 
-# class TestEventConsumer(unittest.TestCase):
-#     def test1(self):
-#         ec = EventConsumer()
-#         input_value = random.random()
-#         ec.consume(input_value)
-#         output_value = ec.get_data()
-#         self.assertEqual(input_value, output_value)
-#
-#
-# class TestEventProcessor(unittest.TestCase):
-#
-#
+class TestEventConsumer(unittest.TestCase):
+    def test_get_data_after_consume(self):
+        ec = EventConsumer()
+        input_value = random.random()
+        ec.consume(input_value)
+        output_value = ec.get_data()
+        self.assertEqual(input_value, output_value)
+
+
+class TestEventProcessor(unittest.TestCase):
+    def setUp(self):
+        pass
+
+    def test_register_consumer(self):
+        pass
+
+
+
+
+
 # class TestMovingWindow(unittest.TestCase):
 #
 #
