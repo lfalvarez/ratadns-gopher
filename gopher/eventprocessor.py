@@ -11,6 +11,7 @@ import time as Time
 import hashlib
 import uuid
 
+
 class EventConsumer(object):
     """
     # What's the objective of this class?
@@ -281,6 +282,7 @@ class ServerDataV2EventProcessor(WindowedEventProcessor):
         self.subscribe("AnswersPerSecond")
         self.server_data_config = config["server_data"]
         self.time_spans = self.server_data_config["times"]
+        self.salt = uuid.uuid4().hex.encode()  # TODO: Change salt diary
 
     def merge_data(self, current_timestamp: float):
         result = []
@@ -323,7 +325,7 @@ class ServerDataV2EventProcessor(WindowedEventProcessor):
                 total_qps += qps_avg
                 total_aps += aps_avg
                 server_result = {
-                    "server_id": hashlib.md5(uuid.uuid4().hex.encode() + server_id.encode()).hexdigest(),  # TODO: Change seed diary
+                    "server_id": hashlib.md5(self.salt + server_id.encode()).hexdigest(),
                     "queries_per_second": qps_avg,
                     "answers_per_second": aps_avg
                 }
