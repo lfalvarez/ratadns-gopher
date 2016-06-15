@@ -8,6 +8,9 @@ import json
 import datetime
 import time as Time
 
+import hashlib
+import uuid
+
 
 class EventConsumer(object):
     """
@@ -87,8 +90,10 @@ def get_topk(l: Sequence[Any], k: int, key):
 
     return top_k_items
 
+
 def hex2ip(hex_ip: str) -> str:
     return ".".join([str(int(hex_ip[i:i+2],16)) for i in range(0,8,2)])
+
 
 class WindowedEventProcessor(EventProcessor):
     def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
@@ -269,6 +274,68 @@ class ServerDataEventProcessor(WindowedEventProcessor):
 
         return result
 
+
+class ServerDataV2EventProcessor(WindowedEventProcessor):
+    def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
+        super().__init__(r, config)
+        self.subscribe("QueriesPerSecond")
+        self.subscribe("AnswersPerSecond")
+        self.server_data_config = config["server_data"]
+        self.time_spans = self.server_data_config["times"]
+        self.salt = uuid.uuid4().hex.encode()  # TODO: Change salt diary
+
+    def merge_data(self, current_timestamp: float):
+        result = []
+
+        for time_span in self.time_spans:
+            total_qps = 0
+            total_aps = 0
+            accumulator = {}
+
+            fievel_windows = self.moving_window.get_items_after_limit(current_timestamp - time_span * 60 * 1000)
+            for fievel_window in fievel_windows:
+                server_id = fievel_window["serverId"]
+                window_type = fievel_window["type"]
+                window_data = fievel_window["data"]
+
+                if server_id not in accumulator:
+                    accumulator[server_id] = {
+                        "queries_per_second": [],
+                        "answers_per_second": []
+                    }
+
+                server_accumulator = accumulator[server_id]
+                if window_type == "QueriesPerSecond":
+                    server_accumulator["queries_per_second"].append(window_data)
+                elif window_type == "AnswersPerSecond":
+                    server_accumulator["answers_per_second"].append(window_data)
+
+            time_span_result = {
+                "time_span": time_span,
+                "servers_data": [],
+                "total_qps": 0,
+                "total_aps": 0
+            }
+
+            for server_id, server_accumulator in accumulator.items():
+                qps = server_accumulator["queries_per_second"]
+                aps = server_accumulator["answers_per_second"]
+                qps_avg = sum(qps) / float(len(qps)) if len(qps) != 0 else 0
+                aps_avg = sum(aps) / float(len(aps)) if len(aps) != 0 else 0
+                total_qps += qps_avg
+                total_aps += aps_avg
+                server_result = {
+                    "server_id": hashlib.md5(self.salt + server_id.encode()).hexdigest(),
+                    "queries_per_second": qps_avg,
+                    "answers_per_second": aps_avg
+                }
+                time_span_result["servers_data"].append(server_result)
+
+            time_span_result["total_qps"] = total_qps
+            time_span_result["total_aps"] = total_aps
+            result.append(time_span_result)
+
+        return result
 
 class TopQNamesEventProcessor(WindowedEventProcessor):
     def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
