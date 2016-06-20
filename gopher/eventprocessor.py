@@ -92,6 +92,9 @@ def get_topk(l: Sequence[Any], k: int, key):
 
 
 def hex2ip(hex_ip: str) -> str:
+    if ":" in hex_ip: # Assume IPV6
+        return hex_ip
+
     return ".".join([str(int(hex_ip[i:i+2],16)) for i in range(0,8,2)])
 
 
