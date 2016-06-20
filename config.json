@@ -1,6 +1,6 @@
 {
   "redis": {
-    "address": "200.7.6.140",
+    "address": "127.0.0.1",
     "port": 6379
   },
   "freegeoip": {

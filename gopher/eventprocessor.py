@@ -312,9 +312,7 @@ class ServerDataV2EventProcessor(WindowedEventProcessor):
 
             time_span_result = {
                 "time_span": time_span,
-                "servers_data": [],
-                "total_qps": 0,
-                "total_aps": 0
+                "servers_data": []
             }
 
             for server_id, server_accumulator in accumulator.items():
@@ -331,8 +329,10 @@ class ServerDataV2EventProcessor(WindowedEventProcessor):
                 }
                 time_span_result["servers_data"].append(server_result)
 
-            time_span_result["total_qps"] = total_qps
-            time_span_result["total_aps"] = total_aps
+            time_span_result["servers_data"].append({
+                "server_id": "total",
+                "total_qps": total_qps,
+                "total_aps": total_aps});
             result.append(time_span_result)
 
         return result
