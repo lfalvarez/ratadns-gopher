@@ -331,8 +331,8 @@ class ServerDataV2EventProcessor(WindowedEventProcessor):
 
             time_span_result["servers_data"].append({
                 "server_id": "total",
-                "total_qps": total_qps,
-                "total_aps": total_aps});
+                "queries_per_second": total_qps,
+                "answers_per_second": total_aps});
             result.append(time_span_result)
 
         return result
