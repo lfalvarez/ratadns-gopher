@@ -4,7 +4,6 @@ from gopher import EventConsumer, ServerDataEventProcessor, EventProcessor, Quer
     TopQNamesEventProcessor, ServerDataV2EventProcessor
 from flask import Flask, Response
 
-
 def create_wsgi_app(name):
     app = Flask(name)
 
