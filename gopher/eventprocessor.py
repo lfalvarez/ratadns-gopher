@@ -326,7 +326,7 @@ class ServerDataV2EventProcessor(WindowedEventProcessor):
                 total_qps += qps_avg
                 total_aps += aps_avg
                 server_result = {
-                    "server_id": hashlib.md5(self.salt + server_id.encode()).hexdigest(),
+                    "server_id": server_id.rsplit('/',1)[-1],
                     "queries_per_second": qps_avg,
                     "answers_per_second": aps_avg
                 }
