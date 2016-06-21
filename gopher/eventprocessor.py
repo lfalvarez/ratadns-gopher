@@ -92,10 +92,10 @@ def get_topk(l: Sequence[Any], k: int, key):
 
 
 def hex2ip(hex_ip: str) -> str:
-    if ":" in hex_ip: # Assume IPV6
+    if ":" in hex_ip:  # Assume IPV6
         return hex_ip
 
-    return ".".join([str(int(hex_ip[i:i+2],16)) for i in range(0,8,2)])
+    return ".".join([str(int(hex_ip[i:i + 2], 16)) for i in range(0, 8, 2)])
 
 
 class WindowedEventProcessor(EventProcessor):
@@ -249,9 +249,8 @@ class DataSortedByQTypeEventProcessor(WindowedEventProcessor):
         def key_fn(qtype_data):
             return qtype_data["queries_count"]
 
-        for queries_data in data["queries_data"]:
-            for qtype, queries in queries_data.items():
-                queries = get_topk(queries, k, key_fn)
+        for queries_data in data["queries_data"]["qtype_data"]:
+            queries_data["queries"] = get_topk(queries_data["queries"], k, key_fn)
 
         return data
 
@@ -292,19 +291,34 @@ class DataSortedByQTypeEventProcessor(WindowedEventProcessor):
                 "queries_data": []
             }
 
+            qtypes_result = []
             for server_id, server_accumulator in accumulator.items():
-                qtypes_result = {
-                    "qtypes_data": [{
-                                        "qtype": qtype,
-                                        "queries": [{"ip": ip,
-                                                     "queries_count": count,
-                                                     "percentage": 100 * count / total_queries,
-                                                     "server_id": server_id}
-                                                    for ip, count in qtype_data.items()]
-                                    } for qtype, qtype_data in server_accumulator.items()]
-                }
+                qtypes_result += [{
+                                      "qtype": qtype,
+                                      "queries": [{"ip": ip,
+                                                   "queries_count": count,
+                                                   "percentage": 100 * count / total_queries,
+                                                   "server_id": server_id}
+                                                  for ip, count in qtype_data.items()]
+                                  } for qtype, qtype_data in server_accumulator.items()]
 
-            time_span_result["queries_data"] = qtypes_result["qtypes_data"]
+            partial_result = {}
+            for qtype_and_queries in qtypes_result:
+                qtype = qtype_and_queries["qtype"]
+                queries = qtype_and_queries["queries"]
+                if qtype not in partial_result:
+                    partial_result[qtype] = queries
+                else:
+                    partial_result[qtype] += queries
+
+            qtypes_result = []
+            for qtype, queries in partial_result.items():
+                qtypes_result.append({
+                    "qtype": qtype,
+                    "queries": queries
+                })
+
+            time_span_result["queries_data"] = {"qtype_data": qtypes_result}
 
             result.append(time_span_result)
         return result
