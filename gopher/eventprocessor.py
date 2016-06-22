@@ -249,7 +249,7 @@ class DataSortedByQTypeEventProcessor(WindowedEventProcessor):
         def key_fn(qtype_data):
             return qtype_data["queries_count"]
 
-        for queries_data in data["queries_data"]["qtype_data"]:
+        for queries_data in data["qtype_data"]:
             queries_data["queries"] = get_topk(queries_data["queries"], k, key_fn)
 
         return data
@@ -274,8 +274,8 @@ class DataSortedByQTypeEventProcessor(WindowedEventProcessor):
                     ip = queries_by_ip["ip"]
                     queries = queries_by_ip["queries"]
 
-                    for qtype_dec, qnames in queries.items():
-                        qtype = self.qtypes_dict[qtype_dec]
+                    for qtype, qnames in queries.items():
+                        # qtype = self.qtypes_dict[qtype_dec]
                         if qtype not in server_accumulator:
                             server_accumulator[qtype] = {}
 
@@ -288,7 +288,7 @@ class DataSortedByQTypeEventProcessor(WindowedEventProcessor):
 
             time_span_result = {
                 "time_span": time_span,
-                "queries_data": []
+                "qtype_data": []
             }
 
             qtypes_result = []
@@ -318,7 +318,7 @@ class DataSortedByQTypeEventProcessor(WindowedEventProcessor):
                     "queries": queries
                 })
 
-            time_span_result["queries_data"] = {"qtype_data": qtypes_result}
+            time_span_result["qtype_data"] = qtypes_result
 
             result.append(time_span_result)
         return result
