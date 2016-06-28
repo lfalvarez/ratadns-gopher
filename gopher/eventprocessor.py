@@ -227,20 +227,6 @@ class DataSortedByQTypeEventProcessor(WindowedEventProcessor):
         self.summary_config = config["summary"]
         self.time_spans = self.summary_config["times"]
 
-    # Static variable
-    qtypes_dict = {'32769': 'DLV', '32768': 'TA', '56': 'NINFO', '51': 'NSEC3PARAM', '45': 'IPSECKEY', '43': 'DS',
-                   '60': 'CDNSKEY', '61': 'CDNSKEY', '62': 'CSYNC', '49': 'DHCID', '252': 'AXFR', '253': 'MAILB',
-                   '250': 'TSIG', '251': 'IXFR', '256': 'URI', '257': 'CAA', '254': 'MAILA', '255': '*', '24': 'SIG',
-                   '25': 'KEY', '26': 'PX', '27': 'GPOS', '20': 'ISDN', '21': 'RT', '22': 'NSAP', '23': 'NSAP-PTR',
-                   '46': 'RRSIG', '249': 'TKEY', '44': 'SSHFP', '48': 'DNSKEY', '42': 'APL', '29': 'LOC', '40': 'SINK',
-                   '41': 'OPT', '1': 'A', '3': 'MD', '2': 'NS', '5': 'CNAME', '4': 'MF', '7': 'MB', '6': 'SOA',
-                   '9': 'MR', '8': 'MG', '59': 'CDS', '52': 'TLSA', '28': 'AAAA', '13': 'HINFO', '99': 'SPF',
-                   '47': 'NSEC', '108': 'EUI48', '38': 'A6', '17': 'RP', '102': 'GID', '103': 'UNSPEC', '100': 'UINFO',
-                   '101': 'UID', '106': 'L64', '107': 'LP', '104': 'NID', '105': 'L32', '11': 'WKS', '10': 'NULL',
-                   '39': 'DNAME', '12': 'PTR', '15': 'MX', '58': 'TALINK', '14': 'MINFO', '16': 'TXT', '33': 'SRV',
-                   '32': 'NIMLOC', '31': 'EID', '30': 'NXT', '37': 'CERT', '36': 'KX', '35': 'NAPTR', '34': 'ATMA',
-                   '19': 'X25', '55': 'HIP', '109': 'EUI64', '18': 'AFSDB', '57': 'RKEY', '50': 'NSEC3'}
-
     def select_item(self, data):
         # Get TopK queries_count ip's
         k = self.summary_config["output_limit"]
@@ -274,7 +260,6 @@ class DataSortedByQTypeEventProcessor(WindowedEventProcessor):
                     queries = queries_by_ip["queries"]
 
                     for qtype, qnames in queries.items():
-                        # qtype = self.qtypes_dict[qtype_dec]
                         if qtype not in server_accumulator:
                             server_accumulator[qtype] = {}
 
