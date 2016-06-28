@@ -1,20 +1,26 @@
 import redis
 import json
-from gopher import EventConsumer, ServerDataEventProcessor, EventProcessor, QueriesSummaryEventProcessor, \
-    TopQNamesEventProcessor
 from flask import Flask, Response
+from gopher import EventConsumer, \
+        ServerDataEventProcessor, \
+        EventProcessor, \
+        QueriesSummaryEventProcessor, \
+        TopQNamesEventProcessor, \
+        ServerDataV2EventProcessor, \
+        DataSortedByQTypeEventProcessor
 
-
-def create_wsgi_app(name):
-    app = Flask(name)
+def create_app(config_file):
+    app = Flask(__name__)
 
     event_processors = {
         'server_data': ServerDataEventProcessor,
         'queries_summary': QueriesSummaryEventProcessor,
         'top_qnames': TopQNamesEventProcessor,
+        'server_data_v2': ServerDataV2EventProcessor,
+        'queries_by_qtype': DataSortedByQTypeEventProcessor
     }
 
-    config = json.load(open("config.json"))  # TODO: Think how to pass configuration file
+    config = json.load(open(config_file)) 
     r = redis.StrictRedis(host=config['redis']['address'], port=config['redis']['port'], db=0)
     r.flushall()
 

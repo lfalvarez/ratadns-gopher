@@ -8,6 +8,9 @@ import json
 import datetime
 import time as Time
 
+import hashlib
+import uuid
+
 
 class EventConsumer(object):
     """
@@ -89,7 +92,12 @@ def get_topk(l: Sequence[Any], k: int, key):
 
 
 def hex2ip(hex_ip: str) -> str:
-    return ".".join([str(int(hex_ip[i:i+2],16)) for i in range(0,8,2)])
+    if ":" in hex_ip:  # Assume IPV6
+        return hex_ip
+
+    return ".".join([str(int(hex_ip[i:i + 2], 16)) for i in range(0, 8, 2)])
+
+
 
 
 class WindowedEventProcessor(EventProcessor):
@@ -215,6 +223,109 @@ class QueriesSummaryEventProcessor(WindowedEventProcessor):
         return result
 
 
+class DataSortedByQTypeEventProcessor(WindowedEventProcessor):
+    def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
+        super().__init__(r, config)
+        self.subscribe("QueriesSummary")
+        self.summary_config = config["summary"]
+        self.time_spans = self.summary_config["times"]
+
+    # Static variable
+    qtypes_dict = {'32769': 'DLV', '32768': 'TA', '56': 'NINFO', '51': 'NSEC3PARAM', '45': 'IPSECKEY', '43': 'DS',
+                   '60': 'CDNSKEY', '61': 'CDNSKEY', '62': 'CSYNC', '49': 'DHCID', '252': 'AXFR', '253': 'MAILB',
+                   '250': 'TSIG', '251': 'IXFR', '256': 'URI', '257': 'CAA', '254': 'MAILA', '255': '*', '24': 'SIG',
+                   '25': 'KEY', '26': 'PX', '27': 'GPOS', '20': 'ISDN', '21': 'RT', '22': 'NSAP', '23': 'NSAP-PTR',
+                   '46': 'RRSIG', '249': 'TKEY', '44': 'SSHFP', '48': 'DNSKEY', '42': 'APL', '29': 'LOC', '40': 'SINK',
+                   '41': 'OPT', '1': 'A', '3': 'MD', '2': 'NS', '5': 'CNAME', '4': 'MF', '7': 'MB', '6': 'SOA',
+                   '9': 'MR', '8': 'MG', '59': 'CDS', '52': 'TLSA', '28': 'AAAA', '13': 'HINFO', '99': 'SPF',
+                   '47': 'NSEC', '108': 'EUI48', '38': 'A6', '17': 'RP', '102': 'GID', '103': 'UNSPEC', '100': 'UINFO',
+                   '101': 'UID', '106': 'L64', '107': 'LP', '104': 'NID', '105': 'L32', '11': 'WKS', '10': 'NULL',
+                   '39': 'DNAME', '12': 'PTR', '15': 'MX', '58': 'TALINK', '14': 'MINFO', '16': 'TXT', '33': 'SRV',
+                   '32': 'NIMLOC', '31': 'EID', '30': 'NXT', '37': 'CERT', '36': 'KX', '35': 'NAPTR', '34': 'ATMA',
+                   '19': 'X25', '55': 'HIP', '109': 'EUI64', '18': 'AFSDB', '57': 'RKEY', '50': 'NSEC3'}
+
+    def select_item(self, data):
+        # Get TopK queries_count ip's
+        k = self.summary_config["output_limit"]
+
+        def key_fn(qtype_data):
+            return qtype_data["queries_count"]
+
+        for queries_data in data["qtype_data"]:
+            queries_data["queries"] = get_topk(queries_data["queries"], k, key_fn)
+
+        return data
+
+    def merge_data(self, current_timestamp: float):
+        result = []
+        for time_span in self.time_spans:
+            accumulator = {}
+            total_queries = 0
+
+            fievel_windows = self.moving_window.get_items_after_limit(current_timestamp - time_span * 60 * 1000)
+            for fievel_window in fievel_windows:
+                server_id = fievel_window["serverId"]
+                window_data = fievel_window["data"]
+
+                if server_id not in accumulator:
+                    accumulator[server_id] = {}
+
+                server_accumulator = accumulator[server_id]
+
+                for queries_by_ip in window_data:
+                    ip = queries_by_ip["ip"]
+                    queries = queries_by_ip["queries"]
+
+                    for qtype, qnames in queries.items():
+                        # qtype = self.qtypes_dict[qtype_dec]
+                        if qtype not in server_accumulator:
+                            server_accumulator[qtype] = {}
+
+                        if ip not in server_accumulator[qtype]:
+                            server_accumulator[qtype][ip] = len(qnames)
+                        else:
+                            server_accumulator[qtype][ip] += len(qnames)
+
+                        total_queries += len(qnames)
+
+            time_span_result = {
+                "time_span": time_span,
+                "qtype_data": []
+            }
+
+            qtypes_result = []
+            for server_id, server_accumulator in accumulator.items():
+                qtypes_result += [{
+                                      "qtype": qtype,
+                                      "queries": [{"ip": ip,
+                                                   "queries_count": count,
+                                                   "percentage": 100 * count / total_queries,
+                                                   "server_id": server_id}
+                                                  for ip, count in qtype_data.items()]
+                                  } for qtype, qtype_data in server_accumulator.items()]
+
+            partial_result = {}
+            for qtype_and_queries in qtypes_result:
+                qtype = qtype_and_queries["qtype"]
+                queries = qtype_and_queries["queries"]
+                if qtype not in partial_result:
+                    partial_result[qtype] = queries
+                else:
+                    partial_result[qtype] += queries
+
+            qtypes_result = []
+            for qtype, queries in partial_result.items():
+                qtypes_result.append({
+                    "qtype": qtype,
+                    "queries": queries
+                })
+
+            time_span_result["qtype_data"] = qtypes_result
+
+            result.append(time_span_result)
+        return result
+
+
 class ServerDataEventProcessor(WindowedEventProcessor):
     """
     Process of QueriesPerSecond and AnswersPerSecond events (which doesn't need processing in Gopher)
@@ -267,6 +378,69 @@ class ServerDataEventProcessor(WindowedEventProcessor):
                 }
                 time_span_result["servers_data"].append(server_result)
 
+            result.append(time_span_result)
+
+        return result
+
+
+class ServerDataV2EventProcessor(WindowedEventProcessor):
+    def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
+        super().__init__(r, config)
+        self.subscribe("QueriesPerSecond")
+        self.subscribe("AnswersPerSecond")
+        self.server_data_config = config["server_data"]
+        self.time_spans = self.server_data_config["times"]
+        self.salt = uuid.uuid4().hex.encode()  # TODO: Change salt diary
+
+    def merge_data(self, current_timestamp: float):
+        result = []
+
+        for time_span in self.time_spans:
+            total_qps = 0
+            total_aps = 0
+            accumulator = {}
+
+            fievel_windows = self.moving_window.get_items_after_limit(current_timestamp - time_span * 60 * 1000)
+            for fievel_window in fievel_windows:
+                server_id = fievel_window["serverId"]
+                window_type = fievel_window["type"]
+                window_data = fievel_window["data"]
+
+                if server_id not in accumulator:
+                    accumulator[server_id] = {
+                        "queries_per_second": [],
+                        "answers_per_second": []
+                    }
+
+                server_accumulator = accumulator[server_id]
+                if window_type == "QueriesPerSecond":
+                    server_accumulator["queries_per_second"].append(window_data)
+                elif window_type == "AnswersPerSecond":
+                    server_accumulator["answers_per_second"].append(window_data)
+
+            time_span_result = {
+                "time_span": time_span,
+                "servers_data": []
+            }
+
+            for server_id, server_accumulator in accumulator.items():
+                qps = server_accumulator["queries_per_second"]
+                aps = server_accumulator["answers_per_second"]
+                qps_avg = sum(qps) / float(len(qps)) if len(qps) != 0 else 0
+                aps_avg = sum(aps) / float(len(aps)) if len(aps) != 0 else 0
+                total_qps += qps_avg
+                total_aps += aps_avg
+                server_result = {
+                    "server_id": server_id.rsplit('/',1)[-1],
+                    "queries_per_second": qps_avg,
+                    "answers_per_second": aps_avg
+                }
+                time_span_result["servers_data"].append(server_result)
+
+            time_span_result["servers_data"].insert(0, {
+                "server_id": "total",
+                "queries_per_second": total_qps,
+                "answers_per_second": total_aps});
             result.append(time_span_result)
 
         return result

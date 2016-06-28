@@ -1,6 +1,6 @@
 {
   "redis": {
-    "address": "200.7.6.140",
+    "address": "127.0.0.1",
     "port": 6379
   },
   "freegeoip": {
@@ -30,7 +30,9 @@
   "active_event_processors": [
     "top_qnames",
     "queries_summary",
-    "server_data"
+    "server_data",
+    "server_data_v2",
+    "queries_by_qtype"
   ],
   "top_qnames": {
     "times": [1, 5, 15],
