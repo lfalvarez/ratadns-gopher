@@ -1,7 +1,6 @@
-import datetime
 import random
 import unittest
-import time as Time
+
 
 from gopher.eventprocessor import \
         EventConsumer, \

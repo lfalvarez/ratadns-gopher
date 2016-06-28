@@ -8,7 +8,6 @@ import json
 import datetime
 import time as Time
 
-import hashlib
 import uuid
 
 
@@ -96,8 +95,6 @@ def hex2ip(hex_ip: str) -> str:
         return hex_ip
 
     return ".".join([str(int(hex_ip[i:i + 2], 16)) for i in range(0, 8, 2)])
-
-
 
 
 class WindowedEventProcessor(EventProcessor):
@@ -440,7 +437,7 @@ class ServerDataV2EventProcessor(WindowedEventProcessor):
             time_span_result["servers_data"].insert(0, {
                 "server_id": "total",
                 "queries_per_second": total_qps,
-                "answers_per_second": total_aps});
+                "answers_per_second": total_aps})
             result.append(time_span_result)
 
         return result

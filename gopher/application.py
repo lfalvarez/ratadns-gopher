@@ -9,6 +9,7 @@ from gopher import EventConsumer, \
         ServerDataV2EventProcessor, \
         DataSortedByQTypeEventProcessor
 
+
 def create_app(config_file):
     app = Flask(__name__)
 
