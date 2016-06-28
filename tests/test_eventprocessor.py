@@ -55,6 +55,7 @@ class TestMovingWindow(unittest.TestCase):
         items = self.moving_window.get_items_after_limit(-1)
         self.assertListEqual(items, [i for i in range(5, 10)])
 
+
 class TestHex2IP(unittest.TestCase):
     def test_valid_ipv6(self):
         hex_ip = "2001:cdba::3257:9652"
