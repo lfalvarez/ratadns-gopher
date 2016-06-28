@@ -244,6 +244,7 @@ class DataSortedByQTypeEventProcessor(WindowedEventProcessor):
         for time_span in self.time_spans:
             accumulator = {}
             total_queries = 0
+            qtype_queries_count = {}
 
             fievel_windows = self.moving_window.get_items_after_limit(current_timestamp - time_span * 60 * 1000)
             for fievel_window in fievel_windows:
@@ -260,6 +261,9 @@ class DataSortedByQTypeEventProcessor(WindowedEventProcessor):
                     queries = queries_by_ip["queries"]
 
                     for qtype, qnames in queries.items():
+                        if qtype not in qtype_queries_count:
+                            qtype_queries_count[qtype] = 0
+
                         if qtype not in server_accumulator:
                             server_accumulator[qtype] = {}
 
@@ -269,6 +273,7 @@ class DataSortedByQTypeEventProcessor(WindowedEventProcessor):
                             server_accumulator[qtype][ip] += len(qnames)
 
                         total_queries += len(qnames)
+                        qtype_queries_count[qtype] += len(qnames)
 
             time_span_result = {
                 "time_span": time_span,
@@ -281,7 +286,8 @@ class DataSortedByQTypeEventProcessor(WindowedEventProcessor):
                                       "qtype": qtype,
                                       "queries": [{"ip": ip,
                                                    "queries_count": count,
-                                                   "percentage": 100 * count / total_queries,
+                                                   "total_queries_percentage": 100 * count / total_queries,
+                                                   "qtype_queries_percentage": 100 * count / qtype_queries_count[qtype],
                                                    "server_id": server_id}
                                                   for ip, count in qtype_data.items()]
                                   } for qtype, qtype_data in server_accumulator.items()]
