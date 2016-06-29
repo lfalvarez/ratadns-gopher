@@ -3,11 +3,10 @@
 RaTA DNS aggregator module. Service that process DNS packets information and sends it to a HTML5 SSE.
 
 # Developer info
-In order to start developing you must install the dependencies. Assuming that you have virtualenv:
+In order to start developing you must install the dependencies. Assuming that you have python and virtualenv installed:
 
 ```
 $ git clone https://github.com/niclabs/ratadns-gopher
-$ git checkout -b python
 $ cd ratadns-gopher
 $ virtualenv env
 $ source env/bin/activate
