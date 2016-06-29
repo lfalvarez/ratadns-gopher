@@ -32,10 +32,11 @@
     "queries_summary",
     "server_data",
     "server_data_v2",
-    "queries_by_qtype"
+    "queries_by_qtype",
+    "top_qnames_v2"
   ],
   "top_qnames": {
-    "times": [1, 5, 15],
+    "times": [1],
     "output_limit": 5
   },
   "summary": {

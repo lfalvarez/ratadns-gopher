@@ -494,3 +494,66 @@ class TopQNamesEventProcessor(WindowedEventProcessor):
             result.append(time_span_result)
 
         return result
+
+
+class TopQNamesV2EventProcessor(WindowedEventProcessor):
+    def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
+        super().__init__(r, config)
+        self.subscribe("topk")
+        self.top_qnames_config = config["top_qnames"]
+        self.time_spans = self.top_qnames_config["times"]
+
+    def select_item(self, data):
+        k = self.top_qnames_config["output_limit"]
+
+        def key_fn(qnames_data):
+            return qnames_data["qname_count"]
+
+        for server_data in data["servers_data"]:
+            server_data["top_qnames"] = get_topk(server_data["top_qnames"], k, key_fn)
+
+        return data
+
+    def merge_data(self, current_timestamp: float):
+        result = []
+        for time_span in self.time_spans:
+            accumulator = {}
+            total_queries = 0
+
+            fievel_windows = self.moving_window.get_items_after_limit(current_timestamp - time_span * 60 * 1000)
+            for fievel_window in fievel_windows:
+                server_id = fievel_window["serverId"]
+                window_data = fievel_window["data"]
+
+                if server_id not in accumulator:
+                    accumulator[server_id] = {}
+
+                server_accumulator = accumulator[server_id]
+
+                for qname, qname_count in window_data.items():
+                    if qname not in server_accumulator:
+                        server_accumulator[qname] = qname_count
+                    else:
+                        server_accumulator[qname] += qname_count
+                    total_queries += qname_count
+
+            time_span_result = {
+                "time_span": time_span,
+                "servers_data": []
+            }
+
+            for server_id, server_accumulator in accumulator.items():
+                server_result = {
+                    "server_id": server_id,
+                    "top_qnames": [{
+                                       "qname": qname,
+                                       "qname_count": qname_count,
+                                       "percentage": 100 * qname_count / total_queries
+                                   } for qname, qname_count in server_accumulator.items()],
+                }
+                time_span_result["servers_data"].append(server_result)
+
+            result.append(time_span_result)
+
+        return result
+
