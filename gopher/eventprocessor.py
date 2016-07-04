@@ -419,7 +419,7 @@ class ServerDataV2EventProcessor(WindowedEventProcessor):
                 total_qps += qps_avg
                 total_aps += aps_avg
                 server_result = {
-                    "server_id": server_id.rsplit('/',1)[-1],
+                    "server_id": server_id.rsplit('/', 1)[-1],
                     "queries_per_second": qps_avg,
                     "answers_per_second": aps_avg
                 }
@@ -507,9 +507,16 @@ class TopQNamesV2EventProcessor(WindowedEventProcessor):
         k = self.top_qnames_config["output_limit"]
 
         def key_fn(qnames_data):
-            return qnames_data["qname_total_queries"]
+            return qnames_data["total_count"]
+
+        def ip_key_fn(servers_data):
+            return servers_data["ip_server_count"]
 
         data["qnames_data"] = get_topk(data["qnames_data"], k, key_fn)
+
+        for qname_data in data["qnames_data"]:
+            for servers_data in qname_data["servers_data"]:
+                servers_data["top_ips"] = get_topk(servers_data["top_ips"], 10, ip_key_fn)
 
         return data
 
@@ -518,6 +525,7 @@ class TopQNamesV2EventProcessor(WindowedEventProcessor):
         for time_span in self.time_spans:
             accumulator = {}
             total_queries = 0
+            qname_queries_count = {}
 
             fievel_windows = self.moving_window.get_items_after_limit(current_timestamp - time_span * 60 * 1000)
             for fievel_window in fievel_windows:
@@ -530,14 +538,22 @@ class TopQNamesV2EventProcessor(WindowedEventProcessor):
                 server_accumulator = accumulator[server_id]
 
                 for qname, ips_list in window_data.items():
+                    if qname not in qname_queries_count:
+                        qname_queries_count[qname] = {}
+
+                    if server_id not in qname_queries_count[qname]:
+                        qname_queries_count[qname][server_id] = 0
+
                     if qname not in server_accumulator:
                         server_accumulator[qname] = {}
+
                     for ip in ips_list:
                         if ip not in server_accumulator[qname]:
                             server_accumulator[qname][ip] = 1
                         else:
                             server_accumulator[qname][ip] += 1
-                    total_queries += len(ips_list)
+
+                    qname_queries_count[qname][server_id] += len(ips_list)
 
             time_span_result = {
                 "time_span": time_span,
@@ -547,17 +563,17 @@ class TopQNamesV2EventProcessor(WindowedEventProcessor):
             server_result = []
             for server_id, server_accumulator in accumulator.items():
                 server_result += [{
-                                       "qname": qname,
-                                       "server_data": [{
-                                           "server_id": server_id,
-                                           "ips": [{
-                                                       "ip": ip,
-                                                       "count": ip_count,
-                                                       "qname_percentage": 100 * ip_count / len(ips_list)
-                                                   } for ip, ip_count in ips_list.items()],
-                                           "server_qname_count": len(ips_list),
-                                       }]
-                                   } for qname, ips_list in server_accumulator.items()]
+                                      "qname": qname,
+                                      "server_data": [{
+                                          "server_id": server_id,
+                                          "qname_server_count": qname_queries_count[qname][server_id],
+                                          "top_ips": [{
+                                                      "ip": ip,
+                                                      "ip_server_count": ip_count,
+                                                      "ip_server_percentage": 100 * ip_count / qname_queries_count[qname][server_id],
+                                                  } for ip, ip_count in ips_list.items()],
+                                      }]
+                                  } for qname, ips_list in server_accumulator.items()]
 
             partial_result = {}
             for qname_data in server_result:
@@ -570,12 +586,12 @@ class TopQNamesV2EventProcessor(WindowedEventProcessor):
 
             qnames_result = []
             for qname, qname_data in partial_result.items():
-                qname_total_queries = 0
-                for server_data in qname_data:
-                    qname_total_queries += server_data["server_qname_count"]
+                qname_total_count = 0
+                for server_id, qname_count in qname_queries_count[qname].items():
+                    qname_total_count += qname_count
                 qnames_result.append({
                     "qname": qname,
-                    "qname_total_queries": qname_total_queries,
+                    "total_count": qname_total_count,
                     "servers_data": qname_data
                 })
 
@@ -584,4 +600,3 @@ class TopQNamesV2EventProcessor(WindowedEventProcessor):
             result.append(time_span_result)
 
         return result
-
