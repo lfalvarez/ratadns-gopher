@@ -28,6 +28,11 @@
   ],
   "sse_route": "sse",
   "active_event_processors": [
+    "top_qnames",
+    "queries_summary",
+    "server_data",
+    "server_data_v2",
+    "queries_by_qtype",
     "top_qnames_v2"
   ],
   "top_qnames": {
