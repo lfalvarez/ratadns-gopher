@@ -499,7 +499,7 @@ class TopQNamesEventProcessor(WindowedEventProcessor):
 class TopQNamesV2EventProcessor(WindowedEventProcessor):
     def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
         super().__init__(r, config)
-        self.subscribe("topk")
+        self.subscribe("topk_with_ip")
         self.top_qnames_config = config["top_qnames"]
         self.time_spans = self.top_qnames_config["times"]
 
@@ -507,10 +507,9 @@ class TopQNamesV2EventProcessor(WindowedEventProcessor):
         k = self.top_qnames_config["output_limit"]
 
         def key_fn(qnames_data):
-            return qnames_data["qname_count"]
+            return qnames_data["qname_total_queries"]
 
-        for server_data in data["servers_data"]:
-            server_data["top_qnames"] = get_topk(server_data["top_qnames"], k, key_fn)
+        data["qnames_data"] = get_topk(data["qnames_data"], k, key_fn)
 
         return data
 
@@ -530,28 +529,56 @@ class TopQNamesV2EventProcessor(WindowedEventProcessor):
 
                 server_accumulator = accumulator[server_id]
 
-                for qname, qname_count in window_data.items():
+                for qname, ips_list in window_data.items():
                     if qname not in server_accumulator:
-                        server_accumulator[qname] = qname_count
-                    else:
-                        server_accumulator[qname] += qname_count
-                    total_queries += qname_count
+                        server_accumulator[qname] = {}
+                    for ip in ips_list:
+                        if ip not in server_accumulator[qname]:
+                            server_accumulator[qname][ip] = 1
+                        else:
+                            server_accumulator[qname][ip] += 1
+                    total_queries += len(ips_list)
 
             time_span_result = {
                 "time_span": time_span,
-                "servers_data": []
+                "qnames_data": []
             }
 
             for server_id, server_accumulator in accumulator.items():
-                server_result = {
-                    "server_id": server_id,
-                    "top_qnames": [{
+                server_result = [{
                                        "qname": qname,
-                                       "qname_count": qname_count,
-                                       "percentage": 100 * qname_count / total_queries
-                                   } for qname, qname_count in server_accumulator.items()],
-                }
-                time_span_result["servers_data"].append(server_result)
+                                       "server_data": [{
+                                           "server_id": server_id,
+                                           "ips": [{
+                                                       "ip": ip,
+                                                       "count": ip_count,
+                                                       "qname_percentage": 100 * ip_count / len(ips_list)
+                                                   } for ip, ip_count in ips_list.items()],
+                                           "server_qname_count": len(ips_list),
+                                       }]
+                                   } for qname, ips_list in server_accumulator.items()]
+
+            partial_result = {}
+            for qname_data in server_result:
+                qname = qname_data["qname"]
+                server_data = qname_data["server_data"]
+                if qname not in partial_result:
+                    partial_result[qname] = server_data
+                else:
+                    partial_result[qname] += server_data
+
+            qnames_result = []
+            for qname, qname_data in partial_result.items():
+                qname_total_queries = 0
+                for server_data in qname_data:
+                    qname_total_queries += server_data["server_qname_count"]
+                qnames_result.append({
+                    "qname": qname,
+                    "qname_total_queries": qname_total_queries,
+                    "servers_data": qname_data
+                })
+
+            time_span_result["qnames_data"] = qnames_result
 
             result.append(time_span_result)
 
