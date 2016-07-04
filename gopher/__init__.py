@@ -5,5 +5,6 @@ from gopher.eventprocessor import ServerDataEventProcessor
 from gopher.eventprocessor import TopQNamesEventProcessor
 from gopher.eventprocessor import ServerDataV2EventProcessor
 from gopher.eventprocessor import DataSortedByQTypeEventProcessor
+from gopher.eventprocessor import TopQNamesV2EventProcessor
 from gopher.application import create_app
 
