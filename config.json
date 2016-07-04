@@ -39,10 +39,10 @@
     "output_limit": 10
   },
   "summary": {
-    "times": [1, 5, 15],
+    "times": [1],
     "output_limit": 5
   },
   "server_data": {
-    "times": [1, 5, 15]
+    "times": [1]
   }
 }
