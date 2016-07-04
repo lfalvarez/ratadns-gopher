@@ -32,7 +32,7 @@
     "queries_summary",
     "server_data",
     "queries_by_qtype",
-    "top_qnames_v2"
+    "top_qnames_with_ip"
   ],
   "top_qnames": {
     "times": [1],

@@ -7,7 +7,7 @@ from gopher import EventConsumer, \
         QueriesSummaryEventProcessor, \
         TopQNamesEventProcessor, \
         DataSortedByQTypeEventProcessor, \
-        TopQNamesV2EventProcessor
+        TopQNamesWithIPEventProcessor
 
 
 def create_app(config_file):
@@ -18,7 +18,7 @@ def create_app(config_file):
         'queries_summary': QueriesSummaryEventProcessor,
         'top_qnames': TopQNamesEventProcessor,
         'queries_by_qtype': DataSortedByQTypeEventProcessor,
-        'top_qnames_v2': TopQNamesV2EventProcessor
+        'top_qnames_with_ip': TopQNamesWithIPEventProcessor
     }
 
     config = json.load(open(config_file)) 

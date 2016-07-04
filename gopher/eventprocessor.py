@@ -439,7 +439,7 @@ class TopQNamesEventProcessor(WindowedEventProcessor):
         return result
 
 
-class TopQNamesV2EventProcessor(WindowedEventProcessor):
+class TopQNamesWithIPEventProcessor(WindowedEventProcessor):
     def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
         super().__init__(r, config)
         self.subscribe("topk_with_ip")
