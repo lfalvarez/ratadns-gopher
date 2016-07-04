@@ -315,63 +315,6 @@ class DataSortedByQTypeEventProcessor(WindowedEventProcessor):
 
 
 class ServerDataEventProcessor(WindowedEventProcessor):
-    """
-    Process of QueriesPerSecond and AnswersPerSecond events (which doesn't need processing in Gopher)
-    """
-
-    def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
-        super().__init__(r, config)
-        self.subscribe("QueriesPerSecond")
-        self.subscribe("AnswersPerSecond")
-        self.server_data_config = config["server_data"]
-        self.time_spans = self.server_data_config["times"]
-
-    def merge_data(self, current_timestamp: float):
-        result = []
-        for time_span in self.time_spans:
-            accumulator = {}
-
-            fievel_windows = self.moving_window.get_items_after_limit(current_timestamp - time_span * 60 * 1000)
-            for fievel_window in fievel_windows:
-                server_id = fievel_window["serverId"]
-                window_type = fievel_window["type"]
-                window_data = fievel_window["data"]
-
-                if server_id not in accumulator:
-                    accumulator[server_id] = {
-                        "queries_per_second": [],
-                        "answers_per_second": []
-                    }
-
-                server_accumulator = accumulator[server_id]
-                if window_type == "QueriesPerSecond":
-                    server_accumulator["queries_per_second"].append(window_data)
-                elif window_type == "AnswersPerSecond":
-                    server_accumulator["answers_per_second"].append(window_data)
-
-            time_span_result = {
-                "time_span": time_span,
-                "servers_data": []
-            }
-
-            for server_id, server_accumulator in accumulator.items():
-                qps = server_accumulator["queries_per_second"]
-                aps = server_accumulator["answers_per_second"]
-                qps_avg = sum(qps) / float(len(qps)) if len(qps) != 0 else 0
-                aps_avg = sum(aps) / float(len(aps)) if len(aps) != 0 else 0
-                server_result = {
-                    "server_id": server_id,
-                    "queries_per_second": qps_avg,
-                    "answers_per_second": aps_avg
-                }
-                time_span_result["servers_data"].append(server_result)
-
-            result.append(time_span_result)
-
-        return result
-
-
-class ServerDataV2EventProcessor(WindowedEventProcessor):
     def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
         super().__init__(r, config)
         self.subscribe("QueriesPerSecond")
