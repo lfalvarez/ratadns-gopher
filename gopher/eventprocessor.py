@@ -544,8 +544,9 @@ class TopQNamesV2EventProcessor(WindowedEventProcessor):
                 "qnames_data": []
             }
 
+            server_result = []
             for server_id, server_accumulator in accumulator.items():
-                server_result = [{
+                server_result += [{
                                        "qname": qname,
                                        "server_data": [{
                                            "server_id": server_id,
