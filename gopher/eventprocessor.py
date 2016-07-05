@@ -1,14 +1,12 @@
+import datetime
+import json
 import queue
+import threading
+import time
+import uuid
 from typing import Mapping, Tuple, Any, Sequence
 
 import redis
-import threading
-import json
-
-import datetime
-import time as Time
-
-import uuid
 
 
 class EventConsumer(object):
@@ -26,6 +24,7 @@ class EventProcessor(threading.Thread):
     """
     Thread that manages each of the EventProcessor that are being run
     """
+
     def __init__(self, r: redis.StrictRedis):
         threading.Thread.__init__(self)
         self.pubsub = r.pubsub(ignore_subscribe_messages=True)
@@ -57,6 +56,7 @@ class MovingWindow(object):
     Manages the logic behind the "windowed" algorithm, adding new elements at the moment
     of being received, deleting old elements and returning the elements within a certain range
     """
+
     def __init__(self):
         self.item_timestamp_list = []
 
@@ -84,7 +84,8 @@ def get_topk(l: Sequence[Any], k: int, key):
     :return: list with only the top K elements of original list l
     """
     top_k_items = l[:k]
-    top_k_items.sort(key=key, reverse=True)
+    # top_k_items.sort(key=key, reverse=True)
+    top_k_items = sorted(top_k_items, key=key, reverse=True)
     for item in l[k:]:
         i = 0
         while i < k and key(item) > key(top_k_items[-1 * (i + 1)]):
@@ -113,6 +114,7 @@ class WindowedEventProcessor(EventProcessor):
     Abstract class that manages EventProcessor that use the "windowed" algorithm (deleting
     old data and adding the new that is being received).
     """
+
     def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
         super().__init__(r)
         self.moving_window = MovingWindow()
@@ -128,7 +130,7 @@ class WindowedEventProcessor(EventProcessor):
         return True
 
     def process(self, item: Mapping[str, Any]):
-        current_timestamp = Time.mktime(datetime.datetime.now().timetuple()) * 1000.0
+        current_timestamp = time.mktime(datetime.datetime.now().timetuple()) * 1000.0
 
         # Add data to Dictionary
         self.moving_window.add_item(item, current_timestamp)
@@ -152,6 +154,7 @@ class DataSortedByQTypeEventProcessor(WindowedEventProcessor):
     Receive data from QueriesSummary and delivers data sorted by qtype, showing how many queries
     was made with all the qtypes, and which are the top IP address that made those specific queries.
     """
+
     def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
         super().__init__(r, config)
         self.subscribe("QueriesSummary")
@@ -250,6 +253,7 @@ class ServerDataEventProcessor(WindowedEventProcessor):
     Receive data from QueriesPerSecond and AnswersPerSecond and delivers information about how many
     QPS and APS has been made in each of the servers and in the sum of all of them.
     """
+
     def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
         super().__init__(r, config)
         self.subscribe("QueriesPerSecond")
@@ -317,15 +321,16 @@ class TopQNamesWithIPEventProcessor(WindowedEventProcessor):
     Receives data from TopKWithIP and delivers information about the most queried domains, each with a list
     of the top IP address that made queries for that specific domain.
     """
+
     def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
         super().__init__(r, config)
         self.subscribe("topk_with_ip")
         self.top_qnames_config = config["top_qnames"]
         self.time_spans = self.top_qnames_config["times"]
-        self.ips_list_size = self.top_qnames_config["ips_list_size"]
 
     def select_item(self, data):
         k = self.top_qnames_config["output_limit"]
+        ips_list_size = self.top_qnames_config["ips_list_size"]
 
         def key_fn(qnames_data):
             return qnames_data["total_count"]
@@ -337,7 +342,7 @@ class TopQNamesWithIPEventProcessor(WindowedEventProcessor):
 
         for qname_data in data["qnames_data"]:
             for servers_data in qname_data["servers_data"]:
-                servers_data["top_ips"] = get_topk(servers_data["top_ips"], self.ips_list_size, ip_key_fn)
+                servers_data["top_ips"] = get_topk(servers_data["top_ips"], ips_list_size, ip_key_fn)
 
         return data
 
@@ -345,7 +350,6 @@ class TopQNamesWithIPEventProcessor(WindowedEventProcessor):
         result = []
         for time_span in self.time_spans:
             accumulator = {}
-            total_queries = 0
             qname_queries_count = {}
 
             fievel_windows = self.moving_window.get_items_after_limit(current_timestamp - time_span * 60 * 1000)
@@ -389,10 +393,11 @@ class TopQNamesWithIPEventProcessor(WindowedEventProcessor):
                                           "server_id": server_id,
                                           "qname_server_count": qname_queries_count[qname][server_id],
                                           "top_ips": [{
-                                                      "ip": ip,
-                                                      "ip_server_count": ip_count,
-                                                      "ip_server_percentage": 100 * ip_count / qname_queries_count[qname][server_id],
-                                                  } for ip, ip_count in ips_list.items()],
+                                                          "ip": ip,
+                                                          "ip_server_count": ip_count,
+                                                          "ip_server_percentage": 100 * ip_count /
+                                                                                  qname_queries_count[qname][server_id],
+                                                      } for ip, ip_count in ips_list.items()],
                                       }]
                                   } for qname, ips_list in server_accumulator.items()]
 
