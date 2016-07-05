@@ -28,15 +28,14 @@
   ],
   "sse_route": "sse",
   "active_event_processors": [
-    "top_qnames",
-    "queries_summary",
     "server_data",
     "queries_by_qtype",
     "top_qnames_with_ip"
   ],
   "top_qnames": {
     "times": [1],
-    "output_limit": 10
+    "output_limit": 10,
+    "ips_list_size": 10
   },
   "summary": {
     "times": [1],

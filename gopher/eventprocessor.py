@@ -1,21 +1,15 @@
+import datetime
+import json
 import queue
+import threading
+import time
+import uuid
 from typing import Mapping, Tuple, Any, Sequence
 
 import redis
-import threading
-import json
-
-import datetime
-import time as Time
-
-import uuid
 
 
 class EventConsumer(object):
-    """
-    # What's the objective of this class?
-    """
-
     def __init__(self):
         self.queue = queue.Queue()
 
@@ -28,7 +22,7 @@ class EventConsumer(object):
 
 class EventProcessor(threading.Thread):
     """
-    One event processor for each URL
+    Thread that manages each of the EventProcessor that are being run
     """
 
     def __init__(self, r: redis.StrictRedis):
@@ -58,6 +52,11 @@ class EventProcessor(threading.Thread):
 
 
 class MovingWindow(object):
+    """
+    Manages the logic behind the "windowed" algorithm, adding new elements at the moment
+    of being received, deleting old elements and returning the elements within a certain range
+    """
+
     def __init__(self):
         self.item_timestamp_list = []
 
@@ -77,8 +76,16 @@ class MovingWindow(object):
 
 
 def get_topk(l: Sequence[Any], k: int, key):
+    """
+    Obtain the top K values of a list, comparing a certain key within the elements of the list
+    :param l: list with elements
+    :param k: how many elements will remain in the resulting list
+    :param key: parameter to compare each of the elements
+    :return: list with only the top K elements of original list l
+    """
     top_k_items = l[:k]
-    top_k_items.sort(key=key, reverse=True)
+    # top_k_items.sort(key=key, reverse=True)
+    top_k_items = sorted(top_k_items, key=key, reverse=True)
     for item in l[k:]:
         i = 0
         while i < k and key(item) > key(top_k_items[-1 * (i + 1)]):
@@ -91,6 +98,11 @@ def get_topk(l: Sequence[Any], k: int, key):
 
 
 def hex2ip(hex_ip: str) -> str:
+    """
+    Transform an IP address from hexadecimal to human-readable format
+    :param hex_ip: IP address in hexadecimal form (IPv4) and in human-readable (IPv6)
+    :return: human-readable form of an IP address (IPv4 and IPv6)
+    """
     if ":" in hex_ip:  # Assume IPV6
         return hex_ip
 
@@ -98,6 +110,11 @@ def hex2ip(hex_ip: str) -> str:
 
 
 class WindowedEventProcessor(EventProcessor):
+    """
+    Abstract class that manages EventProcessor that use the "windowed" algorithm (deleting
+    old data and adding the new that is being received).
+    """
+
     def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
         super().__init__(r)
         self.moving_window = MovingWindow()
@@ -113,7 +130,7 @@ class WindowedEventProcessor(EventProcessor):
         return True
 
     def process(self, item: Mapping[str, Any]):
-        current_timestamp = Time.mktime(datetime.datetime.now().timetuple()) * 1000.0
+        current_timestamp = time.mktime(datetime.datetime.now().timetuple()) * 1000.0
 
         # Add data to Dictionary
         self.moving_window.add_item(item, current_timestamp)
@@ -132,95 +149,12 @@ class WindowedEventProcessor(EventProcessor):
         return True, selected_items
 
 
-class QueriesSummaryEventProcessor(WindowedEventProcessor):
-    def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
-        super().__init__(r, config)
-        self.subscribe("QueriesSummary")
-        self.summary_config = config["summary"]
-        self.time_spans = self.summary_config["times"]
-
-    # Static variable
-    qtypes_dict = {'32769': 'DLV', '32768': 'TA', '56': 'NINFO', '51': 'NSEC3PARAM', '45': 'IPSECKEY', '43': 'DS',
-                   '60': 'CDNSKEY', '61': 'CDNSKEY', '62': 'CSYNC', '49': 'DHCID', '252': 'AXFR', '253': 'MAILB',
-                   '250': 'TSIG', '251': 'IXFR', '256': 'URI', '257': 'CAA', '254': 'MAILA', '255': '*', '24': 'SIG',
-                   '25': 'KEY', '26': 'PX', '27': 'GPOS', '20': 'ISDN', '21': 'RT', '22': 'NSAP', '23': 'NSAP-PTR',
-                   '46': 'RRSIG', '249': 'TKEY', '44': 'SSHFP', '48': 'DNSKEY', '42': 'APL', '29': 'LOC', '40': 'SINK',
-                   '41': 'OPT', '1': 'A', '3': 'MD', '2': 'NS', '5': 'CNAME', '4': 'MF', '7': 'MB', '6': 'SOA',
-                   '9': 'MR', '8': 'MG', '59': 'CDS', '52': 'TLSA', '28': 'AAAA', '13': 'HINFO', '99': 'SPF',
-                   '47': 'NSEC', '108': 'EUI48', '38': 'A6', '17': 'RP', '102': 'GID', '103': 'UNSPEC', '100': 'UINFO',
-                   '101': 'UID', '106': 'L64', '107': 'LP', '104': 'NID', '105': 'L32', '11': 'WKS', '10': 'NULL',
-                   '39': 'DNAME', '12': 'PTR', '15': 'MX', '58': 'TALINK', '14': 'MINFO', '16': 'TXT', '33': 'SRV',
-                   '32': 'NIMLOC', '31': 'EID', '30': 'NXT', '37': 'CERT', '36': 'KX', '35': 'NAPTR', '34': 'ATMA',
-                   '19': 'X25', '55': 'HIP', '109': 'EUI64', '18': 'AFSDB', '57': 'RKEY', '50': 'NSEC3'}
-
-    def select_item(self, data):
-        # Get TopK queries_count ip's
-        k = self.summary_config["output_limit"]
-
-        def key_fn(ip_data):
-            return ip_data["queries_count"]
-
-        for server_data in data["servers_data"]:
-            server_data["clients_data"] = get_topk(server_data["clients_data"], k, key_fn)
-
-        return data
-
-    def merge_data(self, current_timestamp: float):
-        result = []
-        for time_span in self.time_spans:
-            accumulator = {}
-            total_queries = 0
-
-            fievel_windows = self.moving_window.get_items_after_limit(current_timestamp - time_span * 60 * 1000)
-            for fievel_window in fievel_windows:
-                server_id = fievel_window["serverId"]
-                window_data = fievel_window["data"]
-
-                if server_id not in accumulator:
-                    accumulator[server_id] = {}
-
-                server_accumulator = accumulator[server_id]
-
-                for queries_by_ip in window_data:
-                    ip = queries_by_ip["ip"]
-                    queries = queries_by_ip["queries"]
-
-                    if ip not in server_accumulator:
-                        server_accumulator[ip] = {"queries_count": 0, "queries": {}}
-
-                    for qtype_dec, qnames in queries.items():
-                        qtype = self.qtypes_dict[qtype_dec]
-                        if qtype in server_accumulator[ip]["queries"]:
-                            server_accumulator[ip]["queries"][qtype] += len(qnames)
-                        else:
-                            server_accumulator[ip]["queries"][qtype] = len(qnames)
-
-                        server_accumulator[ip]["queries_count"] += len(qnames)
-                        total_queries += len(qnames)
-
-            time_span_result = {
-                "time_span": time_span,
-                "servers_data": []
-            }
-
-            for server_id, server_accumulator in accumulator.items():
-                server_result = {
-                    "server_id": server_id,
-                    "clients_data": [{
-                                         "ip": hex2ip(ip),
-                                         "queries": [{"qtype": qtype, "count": count}
-                                                     for qtype, count in ip_data["queries"].items()],
-                                         "queries_count": ip_data["queries_count"],
-                                         "percentage": 100 * ip_data["queries_count"] / total_queries
-                                     } for ip, ip_data in server_accumulator.items()]
-                }
-                time_span_result["servers_data"].append(server_result)
-
-            result.append(time_span_result)
-        return result
-
-
 class DataSortedByQTypeEventProcessor(WindowedEventProcessor):
+    """
+    Receive data from QueriesSummary and delivers data sorted by qtype, showing how many queries
+    was made with all the qtypes, and which are the top IP address that made those specific queries.
+    """
+
     def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
         super().__init__(r, config)
         self.subscribe("QueriesSummary")
@@ -315,13 +249,18 @@ class DataSortedByQTypeEventProcessor(WindowedEventProcessor):
 
 
 class ServerDataEventProcessor(WindowedEventProcessor):
+    """
+    Receive data from QueriesPerSecond and AnswersPerSecond and delivers information about how many
+    QPS and APS has been made in each of the servers and in the sum of all of them.
+    """
+
     def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
         super().__init__(r, config)
         self.subscribe("QueriesPerSecond")
         self.subscribe("AnswersPerSecond")
         self.server_data_config = config["server_data"]
         self.time_spans = self.server_data_config["times"]
-        self.salt = uuid.uuid4().hex.encode()  # TODO: Change salt diary
+        self.salt = uuid.uuid4().hex.encode()
 
     def merge_data(self, current_timestamp: float):
         result = []
@@ -374,6 +313,206 @@ class ServerDataEventProcessor(WindowedEventProcessor):
                 "answers_per_second": total_aps})
             result.append(time_span_result)
 
+        return result
+
+
+class TopQNamesWithIPEventProcessor(WindowedEventProcessor):
+    """
+    Receives data from TopKWithIP and delivers information about the most queried domains, each with a list
+    of the top IP address that made queries for that specific domain.
+    """
+
+    def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
+        super().__init__(r, config)
+        self.subscribe("topk_with_ip")
+        self.top_qnames_config = config["top_qnames"]
+        self.time_spans = self.top_qnames_config["times"]
+
+    def select_item(self, data):
+        k = self.top_qnames_config["output_limit"]
+        ips_list_size = self.top_qnames_config["ips_list_size"]
+
+        def key_fn(qnames_data):
+            return qnames_data["total_count"]
+
+        def ip_key_fn(servers_data):
+            return servers_data["ip_server_count"]
+
+        data["qnames_data"] = get_topk(data["qnames_data"], k, key_fn)
+
+        for qname_data in data["qnames_data"]:
+            for servers_data in qname_data["servers_data"]:
+                servers_data["top_ips"] = get_topk(servers_data["top_ips"], ips_list_size, ip_key_fn)
+
+        return data
+
+    def merge_data(self, current_timestamp: float):
+        result = []
+        for time_span in self.time_spans:
+            accumulator = {}
+            qname_queries_count = {}
+
+            fievel_windows = self.moving_window.get_items_after_limit(current_timestamp - time_span * 60 * 1000)
+            for fievel_window in fievel_windows:
+                server_id = fievel_window["serverId"]
+                window_data = fievel_window["data"]
+
+                if server_id not in accumulator:
+                    accumulator[server_id] = {}
+
+                server_accumulator = accumulator[server_id]
+
+                for qname, ips_list in window_data.items():
+                    if qname not in qname_queries_count:
+                        qname_queries_count[qname] = {}
+
+                    if server_id not in qname_queries_count[qname]:
+                        qname_queries_count[qname][server_id] = 0
+
+                    if qname not in server_accumulator:
+                        server_accumulator[qname] = {}
+
+                    for ip in ips_list:
+                        if ip not in server_accumulator[qname]:
+                            server_accumulator[qname][ip] = 1
+                        else:
+                            server_accumulator[qname][ip] += 1
+
+                    qname_queries_count[qname][server_id] += len(ips_list)
+
+            time_span_result = {
+                "time_span": time_span,
+                "qnames_data": []
+            }
+
+            server_result = []
+            for server_id, server_accumulator in accumulator.items():
+                server_result += [{
+                                      "qname": qname,
+                                      "server_data": [{
+                                          "server_id": server_id,
+                                          "qname_server_count": qname_queries_count[qname][server_id],
+                                          "top_ips": [{
+                                                          "ip": ip,
+                                                          "ip_server_count": ip_count,
+                                                          "ip_server_percentage": 100 * ip_count /
+                                                                                  qname_queries_count[qname][server_id],
+                                                      } for ip, ip_count in ips_list.items()],
+                                      }]
+                                  } for qname, ips_list in server_accumulator.items()]
+
+            partial_result = {}
+            for qname_data in server_result:
+                qname = qname_data["qname"]
+                server_data = qname_data["server_data"]
+                if qname not in partial_result:
+                    partial_result[qname] = server_data
+                else:
+                    partial_result[qname] += server_data
+
+            qnames_result = []
+            for qname, qname_data in partial_result.items():
+                qname_total_count = 0
+                for server_id, qname_count in qname_queries_count[qname].items():
+                    qname_total_count += qname_count
+                qnames_result.append({
+                    "qname": qname,
+                    "total_count": qname_total_count,
+                    "servers_data": qname_data
+                })
+
+            time_span_result["qnames_data"] = qnames_result
+
+            result.append(time_span_result)
+
+        return result
+
+
+class QueriesSummaryEventProcessor(WindowedEventProcessor):
+    def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
+        super().__init__(r, config)
+        self.subscribe("QueriesSummary")
+        self.summary_config = config["summary"]
+        self.time_spans = self.summary_config["times"]
+
+    # Static variable
+    qtypes_dict = {'32769': 'DLV', '32768': 'TA', '56': 'NINFO', '51': 'NSEC3PARAM', '45': 'IPSECKEY', '43': 'DS',
+                   '60': 'CDNSKEY', '61': 'CDNSKEY', '62': 'CSYNC', '49': 'DHCID', '252': 'AXFR', '253': 'MAILB',
+                   '250': 'TSIG', '251': 'IXFR', '256': 'URI', '257': 'CAA', '254': 'MAILA', '255': '*', '24': 'SIG',
+                   '25': 'KEY', '26': 'PX', '27': 'GPOS', '20': 'ISDN', '21': 'RT', '22': 'NSAP', '23': 'NSAP-PTR',
+                   '46': 'RRSIG', '249': 'TKEY', '44': 'SSHFP', '48': 'DNSKEY', '42': 'APL', '29': 'LOC', '40': 'SINK',
+                   '41': 'OPT', '1': 'A', '3': 'MD', '2': 'NS', '5': 'CNAME', '4': 'MF', '7': 'MB', '6': 'SOA',
+                   '9': 'MR', '8': 'MG', '59': 'CDS', '52': 'TLSA', '28': 'AAAA', '13': 'HINFO', '99': 'SPF',
+                   '47': 'NSEC', '108': 'EUI48', '38': 'A6', '17': 'RP', '102': 'GID', '103': 'UNSPEC', '100': 'UINFO',
+                   '101': 'UID', '106': 'L64', '107': 'LP', '104': 'NID', '105': 'L32', '11': 'WKS', '10': 'NULL',
+                   '39': 'DNAME', '12': 'PTR', '15': 'MX', '58': 'TALINK', '14': 'MINFO', '16': 'TXT', '33': 'SRV',
+                   '32': 'NIMLOC', '31': 'EID', '30': 'NXT', '37': 'CERT', '36': 'KX', '35': 'NAPTR', '34': 'ATMA',
+                   '19': 'X25', '55': 'HIP', '109': 'EUI64', '18': 'AFSDB', '57': 'RKEY', '50': 'NSEC3'}
+
+    def select_item(self, data):
+        # Get TopK queries_count ip's
+        k = self.summary_config["output_limit"]
+
+        def key_fn(ip_data):
+            return ip_data["queries_count"]
+
+        for server_data in data["servers_data"]:
+            server_data["clients_data"] = get_topk(server_data["clients_data"], k, key_fn)
+
+        return data
+
+    def merge_data(self, current_timestamp: float):
+        result = []
+        for time_span in self.time_spans:
+            accumulator = {}
+            total_queries = 0
+
+            fievel_windows = self.moving_window.get_items_after_limit(current_timestamp - time_span * 60 * 1000)
+            for fievel_window in fievel_windows:
+                server_id = fievel_window["serverId"]
+                window_data = fievel_window["data"]
+
+                if server_id not in accumulator:
+                    accumulator[server_id] = {}
+
+                server_accumulator = accumulator[server_id]
+
+                for queries_by_ip in window_data:
+                    ip = queries_by_ip["ip"]
+                    queries = queries_by_ip["queries"]
+
+                    if ip not in server_accumulator:
+                        server_accumulator[ip] = {"queries_count": 0, "queries": {}}
+
+                    for qtype_dec, qnames in queries.items():
+                        qtype = self.qtypes_dict[qtype_dec]
+                        if qtype in server_accumulator[ip]["queries"]:
+                            server_accumulator[ip]["queries"][qtype] += len(qnames)
+                        else:
+                            server_accumulator[ip]["queries"][qtype] = len(qnames)
+
+                        server_accumulator[ip]["queries_count"] += len(qnames)
+                        total_queries += len(qnames)
+
+            time_span_result = {
+                "time_span": time_span,
+                "servers_data": []
+            }
+
+            for server_id, server_accumulator in accumulator.items():
+                server_result = {
+                    "server_id": server_id,
+                    "clients_data": [{
+                                         "ip": hex2ip(ip),
+                                         "queries": [{"qtype": qtype, "count": count}
+                                                     for qtype, count in ip_data["queries"].items()],
+                                         "queries_count": ip_data["queries_count"],
+                                         "percentage": 100 * ip_data["queries_count"] / total_queries
+                                     } for ip, ip_data in server_accumulator.items()]
+                }
+                time_span_result["servers_data"].append(server_result)
+
+            result.append(time_span_result)
         return result
 
 
@@ -433,112 +572,6 @@ class TopQNamesEventProcessor(WindowedEventProcessor):
                                    } for qname, qname_count in server_accumulator.items()],
                 }
                 time_span_result["servers_data"].append(server_result)
-
-            result.append(time_span_result)
-
-        return result
-
-
-class TopQNamesWithIPEventProcessor(WindowedEventProcessor):
-    def __init__(self, r: redis.StrictRedis, config: Mapping[str, Any]):
-        super().__init__(r, config)
-        self.subscribe("topk_with_ip")
-        self.top_qnames_config = config["top_qnames"]
-        self.time_spans = self.top_qnames_config["times"]
-
-    def select_item(self, data):
-        k = self.top_qnames_config["output_limit"]
-
-        def key_fn(qnames_data):
-            return qnames_data["total_count"]
-
-        def ip_key_fn(servers_data):
-            return servers_data["ip_server_count"]
-
-        data["qnames_data"] = get_topk(data["qnames_data"], k, key_fn)
-
-        for qname_data in data["qnames_data"]:
-            for servers_data in qname_data["servers_data"]:
-                servers_data["top_ips"] = get_topk(servers_data["top_ips"], 10, ip_key_fn)
-
-        return data
-
-    def merge_data(self, current_timestamp: float):
-        result = []
-        for time_span in self.time_spans:
-            accumulator = {}
-            total_queries = 0
-            qname_queries_count = {}
-
-            fievel_windows = self.moving_window.get_items_after_limit(current_timestamp - time_span * 60 * 1000)
-            for fievel_window in fievel_windows:
-                server_id = fievel_window["serverId"]
-                window_data = fievel_window["data"]
-
-                if server_id not in accumulator:
-                    accumulator[server_id] = {}
-
-                server_accumulator = accumulator[server_id]
-
-                for qname, ips_list in window_data.items():
-                    if qname not in qname_queries_count:
-                        qname_queries_count[qname] = {}
-
-                    if server_id not in qname_queries_count[qname]:
-                        qname_queries_count[qname][server_id] = 0
-
-                    if qname not in server_accumulator:
-                        server_accumulator[qname] = {}
-
-                    for ip in ips_list:
-                        if ip not in server_accumulator[qname]:
-                            server_accumulator[qname][ip] = 1
-                        else:
-                            server_accumulator[qname][ip] += 1
-
-                    qname_queries_count[qname][server_id] += len(ips_list)
-
-            time_span_result = {
-                "time_span": time_span,
-                "qnames_data": []
-            }
-
-            server_result = []
-            for server_id, server_accumulator in accumulator.items():
-                server_result += [{
-                                      "qname": qname,
-                                      "server_data": [{
-                                          "server_id": server_id,
-                                          "qname_server_count": qname_queries_count[qname][server_id],
-                                          "top_ips": [{
-                                                      "ip": ip,
-                                                      "ip_server_count": ip_count,
-                                                      "ip_server_percentage": 100 * ip_count / qname_queries_count[qname][server_id],
-                                                  } for ip, ip_count in ips_list.items()],
-                                      }]
-                                  } for qname, ips_list in server_accumulator.items()]
-
-            partial_result = {}
-            for qname_data in server_result:
-                qname = qname_data["qname"]
-                server_data = qname_data["server_data"]
-                if qname not in partial_result:
-                    partial_result[qname] = server_data
-                else:
-                    partial_result[qname] += server_data
-
-            qnames_result = []
-            for qname, qname_data in partial_result.items():
-                qname_total_count = 0
-                for server_id, qname_count in qname_queries_count[qname].items():
-                    qname_total_count += qname_count
-                qnames_result.append({
-                    "qname": qname,
-                    "total_count": qname_total_count,
-                    "servers_data": qname_data
-                })
-
-            time_span_result["qnames_data"] = qnames_result
 
             result.append(time_span_result)
 
