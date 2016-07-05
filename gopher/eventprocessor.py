@@ -322,6 +322,7 @@ class TopQNamesWithIPEventProcessor(WindowedEventProcessor):
         self.subscribe("topk_with_ip")
         self.top_qnames_config = config["top_qnames"]
         self.time_spans = self.top_qnames_config["times"]
+        self.ips_list_size = self.top_qnames_config["ips_list_size"]
 
     def select_item(self, data):
         k = self.top_qnames_config["output_limit"]
@@ -336,7 +337,7 @@ class TopQNamesWithIPEventProcessor(WindowedEventProcessor):
 
         for qname_data in data["qnames_data"]:
             for servers_data in qname_data["servers_data"]:
-                servers_data["top_ips"] = get_topk(servers_data["top_ips"], 10, ip_key_fn)
+                servers_data["top_ips"] = get_topk(servers_data["top_ips"], self.ips_list_size, ip_key_fn)
 
         return data
 

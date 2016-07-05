@@ -34,7 +34,8 @@
   ],
   "top_qnames": {
     "times": [1],
-    "output_limit": 10
+    "output_limit": 10,
+    "ips_list_size": 10
   },
   "summary": {
     "times": [1],
