@@ -17,12 +17,9 @@ class TestEventConsumer(unittest.TestCase):
         self.assertEqual(input_value, output_value)
 
 
-# class TestEventProcessor(unittest.TestCase):
-#     def setUp(self):
-#         pass
-# 
-#     def test_register_consumer(self):
-#         pass
+class TestEventProcessor(unittest.TestCase):
+    pass
+
 
 class TestMovingWindow(unittest.TestCase):
     def setUp(self):
@@ -49,18 +46,6 @@ class TestMovingWindow(unittest.TestCase):
 
         items = self.moving_window.get_items_after_limit(-1)
         self.assertListEqual(items, [i for i in range(5, 10)])
-
-
-class TestHex2IP(unittest.TestCase):
-    def test_valid_ipv6(self):
-        hex_ip = "2001:cdba::3257:9652"
-        ip = hex2ip(hex_ip)
-        self.assertEqual(ip, hex_ip)
-
-    def test_valid_ipv4(self):
-        hex_ip = "A41E6B0B"
-        ip = hex2ip(hex_ip)
-        self.assertEqual(ip, "164.30.107.11")
 
 
 class TestGetTopK(unittest.TestCase):
@@ -100,13 +85,29 @@ class TestGetTopK(unittest.TestCase):
         self.assertListEqual(result_1_list, [self.item4, self.item3])
 
 
-# class TestWindowedEventProcessor(unittest.TestCase):
-#
-#
-# class TestQueriesSummaryEventProcessor(unittest.TestCase):
-#
-#
-# class TestServerDataEventProcessor(unittest.TestCase):
-#
-#
-# class TestTopQNamesEventProcessor(unittest.TestCase):
+class TestHex2IP(unittest.TestCase):
+    def test_valid_ipv6(self):
+        hex_ip = "2001:cdba::3257:9652"
+        ip = hex2ip(hex_ip)
+        self.assertEqual(ip, hex_ip)
+
+    def test_valid_ipv4(self):
+        hex_ip = "A41E6B0B"
+        ip = hex2ip(hex_ip)
+        self.assertEqual(ip, "164.30.107.11")
+
+
+class TestWindowedEventProcessor(unittest.TestCase):
+    pass
+
+
+class TestDataSortedByQTypeEventProcessor(unittest.TestCase):
+    pass
+
+
+class TestServerDataEventProcessor(unittest.TestCase):
+    pass
+
+
+class TestTopQNamesWithIPEventProcessor(unittest.TestCase):
+    pass
