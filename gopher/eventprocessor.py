@@ -77,7 +77,7 @@ class MovingWindow(object):
 
 def get_topk(l: Sequence[Any], k: int, key):
     """
-    Obtain the top K values of a list, comparing a certain key within the elements of the list
+    Obtain the top K values (sorted) of a list, comparing a certain key within the elements of the list
     :param l: list with elements
     :param k: how many elements will remain in the resulting list
     :param key: parameter to compare each of the elements

@@ -69,13 +69,24 @@ class TestHex2IP(unittest.TestCase):
 
 
 class TestGetTopK(unittest.TestCase):
+    def setUp(self):
+        self.simple_list = [1, 2, 3, 4, 5]
+        self.identity = lambda x: x
+
     def test_get_0_elements(self):
-        original_list = [1, 2, 3, 4, 5]
         k = 0
-        result_list = get_topk(original_list, k, None)
+        result_list = get_topk(self.simple_list, k, self.identity)
         self.assertListEqual(result_list, [])
 
+    def test_get_more_elements_than_size(self):
+        k = len(self.simple_list) + 1
+        result_list = get_topk(self.simple_list, k, self.identity)
+        self.assertListEqual(result_list, sorted(self.simple_list, reverse=True))
 
+    def test_get_3_elements(self):
+        k = 3
+        result_list = get_topk(self.simple_list, k, self.identity)
+        self.assertListEqual(result_list, [5, 4, 3])
 
 # class TestWindowedEventProcessor(unittest.TestCase):
 #
