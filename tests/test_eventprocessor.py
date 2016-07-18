@@ -9,7 +9,8 @@ from gopher.eventprocessor import \
         EventProcessor, \
         TopQNamesEventProcessor, \
         QueriesSummaryEventProcessor, \
-        hex2ip
+        hex2ip, \
+        get_topk
 
 
 class TestEventConsumer(unittest.TestCase):
@@ -65,6 +66,16 @@ class TestHex2IP(unittest.TestCase):
         hex_ip = "A41E6B0B"
         ip = hex2ip(hex_ip)
         self.assertEqual(ip, "164.30.107.11")
+
+
+class TestGetTopK(unittest.TestCase):
+    def test_get_0_elements(self):
+        original_list = [1, 2, 3, 4, 5]
+        k = 0
+        result_list = get_topk(original_list, k, None)
+        self.assertListEqual(result_list, [])
+
+
 
 # class TestWindowedEventProcessor(unittest.TestCase):
 #
