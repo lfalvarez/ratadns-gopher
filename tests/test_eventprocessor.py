@@ -91,9 +91,13 @@ class TestGetTopK(unittest.TestCase):
 
     def test_get_2_elements_complex(self):
         k = 2
-        key_fn = lambda x: x["arg2"]
-        result_list = get_topk(self.complex_list, k, key_fn)
-        self.assertListEqual(result_list, [self.item5, self.item4])
+        key_fn_2 = lambda x: x["arg2"]
+        result_2_list = get_topk(self.complex_list, k, key_fn_2)
+        self.assertListEqual(result_2_list, [self.item5, self.item4])
+
+        key_fn_1 = lambda x: x["arg1"]
+        result_1_list = get_topk(self.complex_list, k, key_fn_1)
+        self.assertListEqual(result_1_list, [self.item4, self.item3])
 
 
 # class TestWindowedEventProcessor(unittest.TestCase):
