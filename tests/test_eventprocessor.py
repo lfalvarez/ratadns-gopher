@@ -5,7 +5,10 @@ from gopher.eventprocessor import \
     EventConsumer, \
     MovingWindow, \
     hex2ip, \
-    get_topk
+    get_topk, \
+    DataSortedByQTypeEventProcessor, \
+    ServerDataEventProcessor, \
+    TopQNamesWithIPEventProcessor
 
 
 class TestEventConsumer(unittest.TestCase):
@@ -98,16 +101,49 @@ class TestHex2IP(unittest.TestCase):
 
 
 class TestWindowedEventProcessor(unittest.TestCase):
+    """
+    Abstract class, no testing necessary
+    """
     pass
 
 
 class TestDataSortedByQTypeEventProcessor(unittest.TestCase):
-    pass
+    def setUp(self):
+        pass
+
+    def test_merge_data(self):
+        pass
+
+    def test_select_item(self):
+        pass
+
+    def test_process(self):
+        pass
 
 
 class TestServerDataEventProcessor(unittest.TestCase):
-    pass
+    def setUp(self):
+        pass
+
+    def test_merge_data(self):
+        pass
+
+    def test_select_item(self):
+        pass
+
+    def test_process(self):
+        pass
 
 
 class TestTopQNamesWithIPEventProcessor(unittest.TestCase):
-    pass
+    def setUp(self):
+        pass
+
+    def test_merge_data(self):
+        pass
+
+    def test_select_item(self):
+        pass
+
+    def test_process(self):
+        pass
