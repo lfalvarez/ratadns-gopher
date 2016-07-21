@@ -123,7 +123,30 @@ class TestDataSortedByQTypeEventProcessor(unittest.TestCase):
         pass
 
     def test_select_item(self):
-        pass
+        input_data = {"qtype_data": [
+            {"qtype": 1, "queries": [{"ip": 'ip1', "queries_count": 1},
+                                     {"ip": 'ip2', "queries_count": 5},
+                                     {"ip": 'ip3', "queries_count": 10}]},
+            {"qtype": 2, "queries": [{"ip": 'ip4', "queries_count": 1},
+                                     {"ip": 'ip5', "queries_count": 5},
+                                     {"ip": 'ip6', "queries_count": 10}]},
+            {"qtype": 3, "queries": [{"ip": 'ip7', "queries_count": 1},
+                                     {"ip": 'ip8', "queries_count": 5},
+                                     {"ip": 'ip9', "queries_count": 10}]}
+        ], "time_span": 1}
+
+        result = self.qtype_ep.select_item(input_data)
+
+        expected_output_data = {"qtype_data": [
+            {"qtype": 1, "queries": [{"ip": 'ip3', "queries_count": 10},
+                                     {"ip": 'ip2', "queries_count": 5}]},
+            {"qtype": 2, "queries": [{"ip": 'ip6', "queries_count": 10},
+                                     {"ip": 'ip5', "queries_count": 5}]},
+            {"qtype": 3, "queries": [{"ip": 'ip9', "queries_count": 10},
+                                     {"ip": 'ip8', "queries_count": 5}]}
+        ], "time_span": 1}
+
+        self.assertDictEqual(result, expected_output_data)
 
     def test_process(self):
         pass
@@ -136,9 +159,6 @@ class TestServerDataEventProcessor(unittest.TestCase):
         self.server_data_ep = ServerDataEventProcessor(self.r, self.test_config)
 
     def test_merge_data(self):
-        pass
-
-    def test_select_item(self):
         pass
 
     def test_process(self):
@@ -155,7 +175,90 @@ class TestTopQNamesWithIPEventProcessor(unittest.TestCase):
         pass
 
     def test_select_item(self):
-        pass
+        input_data = {"qnames_data": [
+            {"qname": 'qname1',
+             "total_count": 7,
+             "servers_data": [
+                 {"qname_server_count": 3,
+                  "server_id": 'server1',
+                  "top_ips": [{"ip": 'ip1', "ip_server_count": 1},
+                              {"ip": 'ip2', 'ip_server_count': 2}]},
+                 {"qname_server_count": 4,
+                  "server_id": 'server2',
+                  "top_ips": [{"ip": 'ip3',
+                               "ip_server_count": 1},
+                              {"ip": 'ip4',
+                               'ip_server_count': 2},
+                              {"ip": 'ip5',
+                               "ip_server_count": 1}]}]},
+            {"qname": 'qname2',
+             "total_count": 10,
+             "servers_data": [
+                 {"qname_server_count": 9,
+                  "server_id": 'server1',
+                  "top_ips": [{"ip": 'ip1', "ip_server_count": 3},
+                              {"ip": 'ip2', "ip_server_count": 5},
+                              {"ip": 'ip6', "ip_server_count": 2}]},
+                 {"qname_server_count": 1,
+                  "server_id": 'server2',
+                  "top_ips": [{"ip": 'ip5', "ip_server_count": 1}]}]},
+            {"qname": 'qname3',
+             "total_count": 2,
+             "servers_data": [
+                 {"qname_server_count": 2,
+                  "server_id": 'server1',
+                  "top_ips": [{"ip": 'ip5',
+                               "ip_server_count": 2}]}]},
+            {"qname": 'qname4',
+             "total_count": 12,
+             "servers_data": [
+                 {"qname_server_count": 6,
+                  "server_id": 'server1',
+                  "top_ips": [{"ip": 'ip1', "ip_server_count": 1},
+                              {"ip": 'ip2', 'ip_server_count': 2},
+                              {"ip": 'ip6', 'ip_server_count': 3}]},
+                 {"qname_server_count": 6,
+                  "server_id": 'server2',
+                  "top_ips": [{"ip": 'ip3',
+                               "ip_server_count": 1},
+                              {"ip": 'ip4',
+                               'ip_server_count': 5}]}]},
+            {"qname": 'qname5',
+             "total_count": 1,
+             "servers_data": [
+                 {"qname_server_count": 1,
+                  "server_id": 'server1',
+                  "top_ips": [{"ip": 'ip1', "ip_server_count": 1}]}]}],
+            "time_span": 1}
+
+        result = self.top_qnames_ep.select_item(input_data)
+
+        expected_output_data = {"qnames_data": [
+            {"qname": 'qname4',
+             "total_count": 12,
+             "servers_data": [
+                 {"qname_server_count": 6,
+                  "server_id": 'server1',
+                  "top_ips": [{"ip": 'ip6', 'ip_server_count': 3},
+                              {"ip": 'ip2', 'ip_server_count': 2}]},
+                 {"qname_server_count": 6,
+                  "server_id": 'server2',
+                  "top_ips": [{"ip": 'ip4',
+                               "ip_server_count": 5},
+                              {"ip": 'ip3',
+                               'ip_server_count': 1}]}]},
+            {"qname": 'qname2',
+             "total_count": 10,
+             "servers_data": [
+                 {"qname_server_count": 9,
+                  "server_id": 'server1',
+                  "top_ips": [{"ip": 'ip2', "ip_server_count": 5},
+                              {"ip": 'ip1', "ip_server_count": 3}]},
+                 {"qname_server_count": 1,
+                  "server_id": 'server2',
+                  "top_ips": [{"ip": 'ip5', "ip_server_count": 1}]}]}], "time_span": 1}
+
+        self.assertDictEqual(result, expected_output_data)
 
     def test_process(self):
         pass
