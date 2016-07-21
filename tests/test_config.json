@@ -1,0 +1,14 @@
+{
+  "top_qnames": {
+    "times": [1],
+    "output_limit": 10,
+    "ips_list_size": 10
+  },
+  "summary": {
+    "times": [1],
+    "output_limit": 5
+  },
+  "server_data": {
+    "times": [1]
+  }
+}

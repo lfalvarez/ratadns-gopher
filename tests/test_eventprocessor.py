@@ -1,6 +1,9 @@
 import random
 import unittest
 
+import fakeredis
+import json
+
 from gopher.eventprocessor import \
     EventConsumer, \
     MovingWindow, \
@@ -109,7 +112,12 @@ class TestWindowedEventProcessor(unittest.TestCase):
 
 class TestDataSortedByQTypeEventProcessor(unittest.TestCase):
     def setUp(self):
-        pass
+        self.r = fakeredis.FakeStrictRedis()
+        self.test_config = json.load(open("test_config.json"))
+        self.qtype_ep = DataSortedByQTypeEventProcessor(self.r, self.test_config)
+
+    def tearDown(self):
+        self.r.flushall()
 
     def test_merge_data(self):
         pass
@@ -123,7 +131,9 @@ class TestDataSortedByQTypeEventProcessor(unittest.TestCase):
 
 class TestServerDataEventProcessor(unittest.TestCase):
     def setUp(self):
-        pass
+        self.r = fakeredis.FakeStrictRedis()
+        self.test_config = json.load(open("test_config.json"))
+        self.server_data_ep = ServerDataEventProcessor(self.r, self.test_config)
 
     def test_merge_data(self):
         pass
@@ -137,7 +147,9 @@ class TestServerDataEventProcessor(unittest.TestCase):
 
 class TestTopQNamesWithIPEventProcessor(unittest.TestCase):
     def setUp(self):
-        pass
+        self.r = fakeredis.FakeStrictRedis()
+        self.test_config = json.load(open("test_config.json"))
+        self.top_qnames_ep = TopQNamesWithIPEventProcessor(self.r, self.test_config)
 
     def test_merge_data(self):
         pass
