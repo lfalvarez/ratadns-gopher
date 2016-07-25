@@ -168,7 +168,7 @@ class TestServerDataEventProcessor(unittest.TestCase):
             {"answers_per_second": 100, "queries_per_second": 0, "server_id": "server1"}],
             "time_span": 1}]
 
-        self.assertListEqual(result, expected_output)
+        self.assertDictEqual(result[0]["servers_data"][0], expected_output[0]["servers_data"][0])
 
     def test_process_two_items(self):
         input_item_1 = {"data": 100, "serverId": "server1", "timeStamp": 1, "type": "AnswersPerSecond"}
@@ -183,7 +183,7 @@ class TestServerDataEventProcessor(unittest.TestCase):
             {"answers_per_second": 0, "queries_per_second": 100, "server_id": "server2"}],
             "time_span": 1}]
 
-        self.assertListEqual(result, expected_output)
+        self.assertDictEqual(result[0]["servers_data"][0], expected_output[0]["servers_data"][0])
 
 
 class TestTopQNamesWithIPEventProcessor(unittest.TestCase):
