@@ -28,9 +28,7 @@
   ],
   "sse_route": "sse",
   "active_event_processors": [
-    "server_data",
-    "queries_by_qtype",
-    "top_qnames_with_ip"
+    "server_data"
   ],
   "top_qnames": {
     "times": [1],

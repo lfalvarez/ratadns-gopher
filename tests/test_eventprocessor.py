@@ -119,9 +119,6 @@ class TestDataSortedByQTypeEventProcessor(unittest.TestCase):
     def tearDown(self):
         self.r.flushall()
 
-    def test_merge_data(self):
-        pass
-
     def test_select_item(self):
         input_data = {"qtype_data": [
             {"qtype": 1, "queries": [{"ip": 'ip1', "queries_count": 1},
@@ -158,11 +155,35 @@ class TestServerDataEventProcessor(unittest.TestCase):
         self.test_config = json.load(open("test_config.json"))
         self.server_data_ep = ServerDataEventProcessor(self.r, self.test_config)
 
-    def test_merge_data(self):
-        pass
+    def tearDown(self):
+        self.r.flushall()
 
-    def test_process(self):
-        pass
+    def test_process_single_item(self):
+        input_item_1 = {"data": 100, "serverId": "server1", "timeStamp": 1, "type": "AnswersPerSecond"}
+
+        _, result = self.server_data_ep.process(input_item_1)
+
+        expected_output = [{"servers_data": [
+            {"answers_per_second": 100, "queries_per_second": 0, "server_id": "total"},
+            {"answers_per_second": 100, "queries_per_second": 0, "server_id": "server1"}],
+            "time_span": 1}]
+
+        self.assertListEqual(result, expected_output)
+
+    def test_process_two_items(self):
+        input_item_1 = {"data": 100, "serverId": "server1", "timeStamp": 1, "type": "AnswersPerSecond"}
+        input_item_2 = {"data": 100, "serverId": "server2", "timeStamp": 2, "type": "QueriesPerSecond"}
+
+        self.server_data_ep.process(input_item_1)
+        _, result = self.server_data_ep.process(input_item_2)
+
+        expected_output = [{"servers_data": [
+            {"answers_per_second": 100, "queries_per_second": 100, "server_id": "total"},
+            {"answers_per_second": 100, "queries_per_second": 0, "server_id": "server1"},
+            {"answers_per_second": 0, "queries_per_second": 100, "server_id": "server2"}],
+            "time_span": 1}]
+
+        self.assertListEqual(result, expected_output)
 
 
 class TestTopQNamesWithIPEventProcessor(unittest.TestCase):
@@ -171,8 +192,8 @@ class TestTopQNamesWithIPEventProcessor(unittest.TestCase):
         self.test_config = json.load(open("test_config.json"))
         self.top_qnames_ep = TopQNamesWithIPEventProcessor(self.r, self.test_config)
 
-    def test_merge_data(self):
-        pass
+    def tearDown(self):
+        self.r.flushall()
 
     def test_select_item(self):
         input_data = {"qnames_data": [
