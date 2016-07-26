@@ -146,6 +146,28 @@ class TestDataSortedByQTypeEventProcessor(unittest.TestCase):
         self.assertDictEqual(result, expected_output_data)
 
     def test_process(self):
+        input_item_1 = {"type": "QueriesSummary", "timeStamp": 1, "serverId": "server1",
+                        "data": [{"ip": "ip1", "queries": {"qtype1": ["domain1", "domain2"],
+                                                           "qtype2": ["domain3", "domain4"]}},
+                                 {"ip": "ip2", "queries": {"qtype2": ["domain2"]}},
+                                 {"ip": "ip3", "queries": {"qtype1": ["domain5", "domain6"]}}]}
+
+        _, result = self.qtype_ep.process(input_item_1)
+
+        expected_output = [{"time_span": 1, "qtype_data": [
+            {"qtype": "qtype2", "queries": [
+                {"ip": "ip1", "qtype_queries_percentage": 2 * 100 / 3, "queries_count": 2, "server_id": "server1",
+                 "total_queries_percentage": 2 * 100 / 7},
+                {"ip": "ip2", "qtype_queries_percentage": 1 * 100 / 3, "queries_count": 1, "server_id": "server1",
+                 "total_queries_percentage": 1 * 100 / 7}]},
+            {"qtype": "qtype1", "queries": [
+                {"ip": "ip3", "qtype_queries_percentage": 2 * 100 / 4, "queries_count": 2, "server_id": "server1",
+                 "total_queries_percentage": 2 * 100 / 7},
+                {"ip": "ip1", "qtype_queries_percentage": 2 * 100 / 4, "queries_count": 2, "server_id": "server1",
+                 "total_queries_percentage": 2 * 100 / 7}]}]}]
+
+        # TODO: assert on lists within dictionaries
+        # self.assertDictEqual(result[0]["qtype_data"][0], expected_output[0]["qtype_data"][0])
         pass
 
 
@@ -282,4 +304,24 @@ class TestTopQNamesWithIPEventProcessor(unittest.TestCase):
         self.assertDictEqual(result, expected_output_data)
 
     def test_process(self):
+        input_item_1 = {"type": "QueryNameCounterWithIPs", "timeStamp": 1, "serverId": "server1",
+                        "data":
+                            {"domain1": ["ip1"],
+                             "domain2": ["ip1", "ip2"],
+                             "domain3": ["ip3", "ip4"]}}
+
+        _, result = self.top_qnames_ep.process(input_item_1)
+
+        expected_output = [{"time_span": 1, "qnames_data": [
+            {"qname": "domain3", "total_count": 2, "servers_data": [
+                {"server_id": "server1", "qname_server_count": 2, "top_ips": [
+                    {"ip": "ip3", "ip_server_count": 1, "ip_server_percentage": 100 * 1 / 2},
+                    {"ip": "ip4", "ip_server_count": 1, "ip_server_percentage": 100 * 1 / 2}]}]},
+            {"qname": "domain2", "total_count": 2, "servers_data": [
+                {"server_id": "server1", "qname_server_count": 2, "top_ips": [
+                    {"ip": "ip1", "ip_server_count": 1, "ip_server_percentage": 100 * 1 / 2},
+                    {"ip": "ip2", "ip_server_count": 1, "ip_server_percentage": 100 * 1 / 2}]}]}]}]
+
+        # TODO: assert on lists within dictionaries
+        # self.assertDictEqual(expected_output[0]["qnames_data"][0], result[0]["qnames_data"][0])
         pass
