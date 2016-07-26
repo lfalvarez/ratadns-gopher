@@ -1,5 +1,6 @@
 import random
 import unittest
+import os
 
 import fakeredis
 import json
@@ -12,6 +13,9 @@ from gopher.eventprocessor import \
     DataSortedByQTypeEventProcessor, \
     ServerDataEventProcessor, \
     TopQNamesWithIPEventProcessor
+
+
+TEST_CONFIG_FILE = os.path.join(os.path.dirname(__file__), 'test_config.json')
 
 
 class TestEventConsumer(unittest.TestCase):
@@ -113,7 +117,7 @@ class TestWindowedEventProcessor(unittest.TestCase):
 class TestDataSortedByQTypeEventProcessor(unittest.TestCase):
     def setUp(self):
         self.r = fakeredis.FakeStrictRedis()
-        self.test_config = json.load(open("test_config.json"))
+        self.test_config = json.load(open(TEST_CONFIG_FILE))
         self.qtype_ep = DataSortedByQTypeEventProcessor(self.r, self.test_config)
 
     def tearDown(self):
@@ -174,7 +178,7 @@ class TestDataSortedByQTypeEventProcessor(unittest.TestCase):
 class TestServerDataEventProcessor(unittest.TestCase):
     def setUp(self):
         self.r = fakeredis.FakeStrictRedis()
-        self.test_config = json.load(open("test_config.json"))
+        self.test_config = json.load(open(TEST_CONFIG_FILE))
         self.server_data_ep = ServerDataEventProcessor(self.r, self.test_config)
 
     def tearDown(self):
@@ -211,7 +215,7 @@ class TestServerDataEventProcessor(unittest.TestCase):
 class TestTopQNamesWithIPEventProcessor(unittest.TestCase):
     def setUp(self):
         self.r = fakeredis.FakeStrictRedis()
-        self.test_config = json.load(open("test_config.json"))
+        self.test_config = json.load(open(TEST_CONFIG_FILE))
         self.top_qnames_ep = TopQNamesWithIPEventProcessor(self.r, self.test_config)
 
     def tearDown(self):
